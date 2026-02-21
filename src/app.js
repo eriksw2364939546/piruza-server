@@ -1,33 +1,50 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { setupRoutes } from './routes/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Статические файлы
-app.use('/uploads', express.static(path.join(__dirname, '../public')));
+// Статические файлы (uploads)
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
-// Тестовый маршрут
+// Health check
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: 'Piruza Store API is running' });
-});
-
-// Обработка 404
-app.use((req, res) => {
-    res.status(404).json({ message: 'Route not found' });
-});
-
-// Обработка ошибок
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(err.status || 500).json({
-        message: err.message || 'Internal Server Error'
+    res.json({
+        status: 'OK',
+        message: 'Piruza Store API is running',
+        timestamp: new Date().toISOString()
     });
 });
 
-module.exports = app;
+// Подключение роутов
+setupRoutes(app);
+
+// 404 Handler
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        message: 'Route not found'
+    });
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(err.statusCode || 500).json({
+        success: false,
+        message: err.message || 'Internal Server Error',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    });
+});
+
+export default app;

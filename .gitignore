@@ -1,32 +1,25 @@
 # Зависимости
 /node_modules/
-
 # Логи
 logs
 *.log
 npm-debug.log*
-
 # Скомпилированный/транспилированный код
 dist/
 build/
 public/uploads/
-
 # Файлы окружения с секретами
 .env
 .env.local
 .env.*.local
-
 # IDE и системные файлы
 .vscode/
 .idea/
 .DS_Store
-
 # Файлы временного кэша
 *.tmp
 *.swp
-
 # Файлы тестовых покрытий
 coverage/
-
 # Другие временные файлы
 *.bak

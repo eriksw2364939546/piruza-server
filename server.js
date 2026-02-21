@@ -1,39 +1,33 @@
 import dotenv from 'dotenv';
+dotenv.config();
+
 import app from './src/app.js';
 import connectDB from './src/config/database.config.js';
-import initializeOwner from './src/config/initowner.config.js';
-import setupCronJobs from './src/config/cronjobs.config.js';
-
-// Загрузка переменных окружения
-dotenv.config();
+import { initializeOwner } from './src/config/initowner.config.js';
+import { setupCronJobs } from './src/config/cronjobs.config.js';
 
 const PORT = process.env.PORT || 7000;
 
-// Функция запуска сервера
 const startServer = async () => {
     try {
-        // Подключение к MongoDB
+        // 1. Подключение к БД
         await connectDB();
-        console.log('✅ Database connected successfully');
 
-        // Инициализация Owner (создание если не существует)
+        // 2. Инициализация Owner (если нет)
         await initializeOwner();
-        console.log('✅ Owner initialization complete');
 
-        // Настройка Cron задач
+        // 3. Запуск Cron задач
         setupCronJobs();
-        console.log('✅ Cron jobs initialized');
 
-        // Запуск сервера
+        // 4. Запуск сервера
         app.listen(PORT, () => {
-            console.log(`🚀 Server running on port ${PORT}`);
-            console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`✅ Server running on port ${PORT}`);
+            console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
         });
     } catch (error) {
-        console.error('❌ Server startup error:', error.message);
+        console.error('❌ Server startup failed:', error);
         process.exit(1);
     }
 };
 
-// Запуск сервера
 startServer();
