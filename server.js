@@ -4,7 +4,7 @@ dotenv.config();
 import app from './src/app.js';
 import connectDB from './src/config/database.config.js';
 import { initializeOwner } from './src/config/initowner.config.js';
-import { setupCronJobs } from './src/config/cronjobs.config.js';
+import { setupCronJobs } from './src/config/cron.config.js';
 
 const PORT = process.env.PORT || 7000;
 
