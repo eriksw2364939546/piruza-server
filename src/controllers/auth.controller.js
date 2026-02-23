@@ -36,6 +36,52 @@ class AuthController {
             error(res, err.message, 404);
         }
     }
+
+    // Обновить свой профиль
+    async updateOwnProfile(req, res) {
+        try {
+            const user = await authService.updateOwnProfile(req.user.id, req.body);
+
+            success(res, user, 'Профиль обновлён');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Обновить профиль другого пользователя (Owner → Admin/Manager)
+    async updateUserProfile(req, res) {
+        try {
+            const { id } = req.params;
+
+            const user = await authService.updateUserProfile(
+                id,
+                req.body,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, user, 'Пользователь обновлён');
+        } catch (err) {
+            error(res, err.message, err.message.includes('Доступ запрещён') ? 403 : 400);
+        }
+    }
+
+    // Удалить пользователя (Owner only)
+    async deleteUser(req, res) {
+        try {
+            const { id } = req.params;
+
+            const user = await authService.deleteUser(
+                id,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, user, 'Пользователь удалён');
+        } catch (err) {
+            error(res, err.message, err.message.includes('Доступ запрещён') ? 403 : 400);
+        }
+    }
 }
 
 export default new AuthController();

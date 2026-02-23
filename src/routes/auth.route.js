@@ -30,4 +30,29 @@ router.get(
     authController.getProfile
 );
 
+// PUT /api/auth/profile - Обновить свой профиль
+router.put(
+    '/profile',
+    authMiddleware.protectAdmin,
+    validationMiddleware.validate(authValidator.updateOwnProfileSchema),
+    authController.updateOwnProfile
+);
+
+// PUT /api/auth/users/:id - Обновить профиль другого пользователя (Owner only)
+router.put(
+    '/users/:id',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.ownerOnly,
+    validationMiddleware.validate(authValidator.updateUserSchema),
+    authController.updateUserProfile
+);
+
+// DELETE /api/auth/users/:id - Удалить пользователя (Owner only)
+router.delete(
+    '/users/:id',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.ownerOnly,
+    authController.deleteUser
+);
+
 export default router;

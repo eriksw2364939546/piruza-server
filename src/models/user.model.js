@@ -1,12 +1,9 @@
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
 
 const userSchema = new mongoose.Schema({
     email: {
         type: String,
         required: [true, 'Email is required'],
-        unique: true,
-        lowercase: true,
         trim: true
     },
     password: {
@@ -32,21 +29,13 @@ const userSchema = new mongoose.Schema({
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        default: null // Owner создаётся без createdBy
+        default: null
     }
 }, {
     timestamps: true
 });
 
-// Хеширование пароля перед сохранением
-userSchema.pre('save', async function () {
-    if (!this.isModified('password')) return;
-    this.password = await bcrypt.hash(this.password, 12);
-});
-
-// Метод для проверки пароля
-userSchema.methods.comparePassword = async function (candidatePassword) {
-    return await bcrypt.compare(candidatePassword, this.password);
-};
+// ЧИСТАЯ МОДЕЛЬ - БЕЗ ХУКОВ, БЕЗ МЕТОДОВ, БЕЗ ЛИШНИХ ПОЛЕЙ
+// Вся логика в сервисах!
 
 export default mongoose.model('User', userSchema);

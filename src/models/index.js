@@ -6,6 +6,7 @@ import Seller from './seller.model.js';
 import Product from './product.model.js';
 import SellerRating from './sellerrating.model.js';
 import SellerRequest from './sellerrequest.model.js';
+import Meta from './meta.model.js';
 
 export {
     User,
@@ -15,5 +16,6 @@ export {
     Seller,
     Product,
     SellerRating,
-    SellerRequest
+    SellerRequest,
+    Meta
 };

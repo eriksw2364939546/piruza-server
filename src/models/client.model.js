@@ -9,15 +9,14 @@ const clientSchema = new mongoose.Schema({
     email: {
         type: String,
         required: true,
-        unique: true,
-        lowercase: true
+        trim: true
     },
     name: {
         type: String,
         required: true
     },
     avatar: {
-        type: String, // URL от Google
+        type: String,
         default: null
     },
     city: {
@@ -28,7 +27,7 @@ const clientSchema = new mongoose.Schema({
     favorites: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Seller'
-    }], // НОВОЕ - избранные магазины
+    }],
     isActive: {
         type: Boolean,
         default: true
@@ -37,7 +36,7 @@ const clientSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Индекс на googleId для быстрого поиска
-clientSchema.index({ googleId: 1 });
+// ЧИСТАЯ МОДЕЛЬ - БЕЗ ХУКОВ, БЕЗ МЕТОДОВ
+// Вся логика в сервисах!
 
 export default mongoose.model('Client', clientSchema);

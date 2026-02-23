@@ -1,6 +1,7 @@
-import { Client } from '../models/index.js';
+import { Client, Meta } from '../models/index.js';
 import { verifyGoogleToken } from '../utils/googleauth.util.js';
 import { generateClientToken } from '../utils/jwt.util.js';
+import { encrypt, decrypt, hashMeta } from '../utils/crypto.util.js';
 
 class ClientService {
     // Google OAuth логин
@@ -8,24 +9,54 @@ class ClientService {
         // Верификация Google токена
         const googleData = await verifyGoogleToken(idToken);
 
-        // Поиск или создание клиента
-        let client = await Client.findOne({ googleId: googleData.googleId });
+        // Поиск через Meta
+        const metaInfo = await Meta.findOne({
+            em: hashMeta(googleData.email),
+            role: 'client'
+        }).populate('client');
 
-        if (client) {
-            // Обновляем данные если клиент существует
+        let client;
+
+        if (metaInfo && metaInfo.client) {
+            // Клиент существует - обновляем данные
+            client = metaInfo.client;
+
+            // Шифруем данные перед сохранением
+            client.email = encrypt(googleData.email.toLowerCase());
+            client.name = encrypt(googleData.name);
+            client.avatar = googleData.avatar;
+
+            await client.save();
+
+            // Дешифруем для возврата
             client.email = googleData.email;
             client.name = googleData.name;
-            client.avatar = googleData.avatar;
-            await client.save();
         } else {
-            // Создаём нового клиента
+            // Создаём нового клиента - шифруем данные
+            const encryptedEmail = encrypt(googleData.email.toLowerCase());
+            const encryptedName = encrypt(googleData.name);
+
             client = new Client({
                 googleId: googleData.googleId,
-                email: googleData.email,
-                name: googleData.name,
+                email: encryptedEmail,
+                name: encryptedName,
                 avatar: googleData.avatar
             });
+
             await client.save();
+
+            // Создаём Meta запись
+            const meta = new Meta({
+                client: client._id,
+                role: 'client',
+                em: hashMeta(googleData.email)
+            });
+
+            await meta.save();
+
+            // Дешифруем для возврата
+            client.email = googleData.email;
+            client.name = googleData.name;
         }
 
         // Генерируем токен
@@ -43,7 +74,7 @@ class ClientService {
         };
     }
 
-    // Получить профиль клиента с избранными
+    // Получить профиль клиента
     async getClientProfile(clientId) {
         const client = await Client.findById(clientId)
             .populate('city', 'name slug')
@@ -53,7 +84,12 @@ class ClientService {
             throw new Error('Клиент не найден');
         }
 
-        return client;
+        // Дешифруем данные
+        const decrypted = client.toObject();
+        decrypted.email = decrypt(decrypted.email);
+        decrypted.name = decrypt(decrypted.name);
+
+        return decrypted;
     }
 
     // Обновить город клиента
@@ -68,10 +104,15 @@ class ClientService {
             throw new Error('Клиент не найден');
         }
 
-        return client;
+        // Дешифруем данные
+        const decrypted = client.toObject();
+        decrypted.email = decrypt(decrypted.email);
+        decrypted.name = decrypt(decrypted.name);
+
+        return decrypted;
     }
 
-    // Добавить/удалить из избранного (toggle)
+    // Добавить/удалить из избранного
     async toggleFavorite(clientId, sellerId) {
         const client = await Client.findById(clientId);
 
@@ -79,16 +120,13 @@ class ClientService {
             throw new Error('Клиент не найден');
         }
 
-        // Проверяем есть ли продавец в избранном
         const index = client.favorites.indexOf(sellerId);
 
         if (index > -1) {
-            // Удаляем из избранного
             client.favorites.splice(index, 1);
             await client.save();
             return { action: 'removed', favorites: client.favorites };
         } else {
-            // Добавляем в избранное
             client.favorites.push(sellerId);
             await client.save();
             return { action: 'added', favorites: client.favorites };
