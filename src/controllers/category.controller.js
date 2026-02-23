@@ -1,0 +1,104 @@
+import categoryService from '../services/category.service.js';
+import { success, error } from '../utils/responsehandler.util.js';
+
+class CategoryController {
+    // Получить все глобальные категории
+    async getGlobalCategories(req, res) {
+        try {
+            const categories = await categoryService.getGlobalCategories();
+
+            success(res, categories, 'Глобальные категории получены');
+        } catch (err) {
+            error(res, err.message, 500);
+        }
+    }
+
+    // Получить глобальную категорию по slug
+    async getGlobalCategoryBySlug(req, res) {
+        try {
+            const { slug } = req.params;
+
+            const category = await categoryService.getGlobalCategoryBySlug(slug);
+
+            success(res, category, 'Категория получена');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // Получить категории продавца
+    async getSellerCategories(req, res) {
+        try {
+            const { sellerId } = req.params;
+
+            const categories = await categoryService.getSellerCategories(sellerId);
+
+            success(res, categories, 'Категории продавца получены');
+        } catch (err) {
+            error(res, err.message, 500);
+        }
+    }
+
+    // Получить категорию продавца по slug
+    async getSellerCategoryBySlug(req, res) {
+        try {
+            const { sellerId, slug } = req.params;
+
+            const category = await categoryService.getSellerCategoryBySlug(sellerId, slug);
+
+            success(res, category, 'Категория получена');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // Создать глобальную категорию
+    async createGlobalCategory(req, res) {
+        try {
+            const category = await categoryService.createGlobalCategory(req.body, req.user.id);
+
+            success(res, category, 'Глобальная категория создана', 201);
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Создать локальную категорию продавца
+    async createSellerCategory(req, res) {
+        try {
+            const category = await categoryService.createSellerCategory(req.body, req.user.id);
+
+            success(res, category, 'Категория продавца создана', 201);
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Обновить категорию
+    async updateCategory(req, res) {
+        try {
+            const { id } = req.params;
+
+            const category = await categoryService.updateCategory(id, req.body);
+
+            success(res, category, 'Категория обновлена');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Удалить категорию
+    async deleteCategory(req, res) {
+        try {
+            const { id } = req.params;
+
+            const category = await categoryService.deleteCategory(id);
+
+            success(res, category, 'Категория удалена');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+}
+
+export default new CategoryController();
