@@ -21,11 +21,11 @@ router.get(
     categoryController.getGlobalCategoryBySlug
 );
 
-// POST /api/categories/global - Создать глобальную категорию (Owner/Admin)
+// POST /api/categories/global - Создать глобальную категорию (Owner only)
 router.post(
     '/global',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.adminAccess,
+    permissionsMiddleware.ownerOnly,
     validationMiddleware.validate(categoryValidator.createGlobalCategorySchema),
     categoryController.createGlobalCategory
 );
@@ -44,31 +44,32 @@ router.get(
     categoryController.getSellerCategoryBySlug
 );
 
-// POST /api/categories/seller - Создать категорию продавца (Owner/Admin)
+// POST /api/categories/seller - Создать категорию продавца (Owner/Admin/Manager своих)
 router.post(
     '/seller',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.adminAccess,
+    permissionsMiddleware.managerAccess,
+    permissionsMiddleware.checkSellerCategoryAccess,
     validationMiddleware.validate(categoryValidator.createSellerCategorySchema),
     categoryController.createSellerCategory
 );
 
 // ========== ОБЩИЕ ОПЕРАЦИИ ==========
 
-// PUT /api/categories/:id - Обновить категорию (Owner/Admin)
+// PUT /api/categories/:id - Обновить категорию (Owner only для глобальных, Owner/Admin для локальных)
 router.put(
     '/:id',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.adminAccess,
+    permissionsMiddleware.ownerOnly,
     validationMiddleware.validate(categoryValidator.updateCategorySchema),
     categoryController.updateCategory
 );
 
-// DELETE /api/categories/:id - Удалить категорию (Owner/Admin)
+// DELETE /api/categories/:id - Удалить категорию (Owner only для глобальных, Owner/Admin для локальных)
 router.delete(
     '/:id',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.adminAccess,
+    permissionsMiddleware.ownerOnly,
     categoryController.deleteCategory
 );
 

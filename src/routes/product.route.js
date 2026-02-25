@@ -37,6 +37,7 @@ router.post(
     '/',
     authMiddleware.protectAdmin,
     permissionsMiddleware.managerAccess,
+    permissionsMiddleware.checkProductAccess,
     validationMiddleware.validate(productValidator.createProductSchema),
     productController.createProduct
 );
@@ -46,6 +47,7 @@ router.put(
     '/:id',
     authMiddleware.protectAdmin,
     permissionsMiddleware.managerAccess,
+    permissionsMiddleware.checkProductAccess,
     validationMiddleware.validate(productValidator.updateProductSchema),
     productController.updateProduct
 );
@@ -57,6 +59,7 @@ router.post(
     '/:id/image',
     authMiddleware.protectAdmin,
     permissionsMiddleware.managerAccess,
+    permissionsMiddleware.checkProductAccess,
     uploadPhoto.single('image', 'products').parse,
     uploadPhoto.single('image', 'products').process,
     productController.uploadProductImage
@@ -69,6 +72,7 @@ router.delete(
     '/:id',
     authMiddleware.protectAdmin,
     permissionsMiddleware.managerAccess,
+    permissionsMiddleware.checkProductAccess,
     productController.deleteProduct
 );
 

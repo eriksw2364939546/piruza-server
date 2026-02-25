@@ -25,29 +25,29 @@ router.get(
     cityController.getCityBySlug
 );
 
-// POST /api/cities - Создать город (Owner/Admin)
+// POST /api/cities - Создать город (Owner only)
 router.post(
     '/',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.adminAccess,
+    permissionsMiddleware.ownerOnly,
     validationMiddleware.validate(cityValidator.createCitySchema),
     cityController.createCity
 );
 
-// PUT /api/cities/:id - Обновить город (Owner/Admin)
+// PUT /api/cities/:id - Обновить город (Owner only)
 router.put(
     '/:id',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.adminAccess,
+    permissionsMiddleware.ownerOnly,
     validationMiddleware.validate(cityValidator.updateCitySchema),
     cityController.updateCity
 );
 
-// PATCH /api/cities/:id/toggle - Переключить статус (Owner/Admin)
+// PATCH /api/cities/:id/toggle - Переключить статус (Owner only)
 router.patch(
     '/:id/toggle',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.adminAccess,
+    permissionsMiddleware.ownerOnly,
     cityController.toggleStatus
 );
 
