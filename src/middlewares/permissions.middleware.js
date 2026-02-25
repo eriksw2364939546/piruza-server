@@ -82,6 +82,25 @@ class PermissionsMiddleware {
     // Проверка доступа к локальным категориям продавца
     async checkSellerCategoryAccess(req, res, next) {
         try {
+            const sellerId = req.body.seller || req.params.sellerId;
+
+            if (!sellerId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'ID продавца не указан'
+                });
+            }
+
+            // Проверяем существование продавца (для всех ролей)
+            const seller = await Seller.findById(sellerId);
+
+            if (!seller) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Продавец не найден. Локальная категория не может существовать без продавца'
+                });
+            }
+
             // Owner и Admin могут управлять всеми локальными категориями
             if (req.user.role === 'owner' || req.user.role === 'admin') {
                 return next();
@@ -89,24 +108,6 @@ class PermissionsMiddleware {
 
             // Manager может управлять только категориями СВОИХ продавцов
             if (req.user.role === 'manager') {
-                const sellerId = req.body.seller || req.params.sellerId;
-
-                if (!sellerId) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'ID продавца не указан'
-                    });
-                }
-
-                const seller = await Seller.findById(sellerId);
-
-                if (!seller) {
-                    return res.status(404).json({
-                        success: false,
-                        message: 'Продавец не найден'
-                    });
-                }
-
                 // Проверка владения продавцом
                 if (seller.createdBy.toString() !== req.user.id.toString()) {
                     return res.status(403).json({
