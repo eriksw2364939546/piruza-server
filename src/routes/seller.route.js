@@ -128,4 +128,15 @@ router.post(
     sellerController.moveToDraft
 );
 
+// DELETE /api/sellers/:id - Удалить продавца и его локальные категории
+// Owner/Admin: любых продавцов
+// Manager: только своих продавцов
+router.delete(
+    '/:id',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.managerAccess,
+    permissionsMiddleware.checkSellerOwnership,
+    sellerController.deleteSeller
+);
+
 export default router;

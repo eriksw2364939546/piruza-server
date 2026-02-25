@@ -1,4 +1,4 @@
-import { Seller } from '../models/index.js';
+import { Seller, City, Category } from '../models/index.js';
 import { generateSlug, generateUniqueSlug } from '../utils/slug.util.js';
 import { sendActivationEmail } from '../utils/email.util.js';
 
@@ -103,8 +103,37 @@ class SellerService {
     }
 
     // Создать продавца (после одобрения заявки)
-    async createSeller(data, userId) {
-        const { name } = data;
+    async createSeller(data, userId, userRole) {
+        const { name, city, globalCategories } = data;
+
+        // Admin и Manager должны выбирать ТОЛЬКО активные города
+        if (userRole !== 'owner') {
+            const cityDoc = await City.findById(city);
+
+            if (!cityDoc) {
+                throw new Error('Город не найден');
+            }
+
+            if (!cityDoc.isActive) {
+                throw new Error('Можно выбрать только активный город. Обратитесь к Owner для активации города');
+            }
+        }
+
+        // Admin и Manager должны выбирать ТОЛЬКО активные глобальные категории
+        if (userRole !== 'owner' && globalCategories && globalCategories.length > 0) {
+            const categories = await Category.find({
+                _id: { $in: globalCategories },
+                isGlobal: true
+            });
+
+            // Проверяем что все категории активны
+            const inactiveCategories = categories.filter(cat => !cat.isActive);
+
+            if (inactiveCategories.length > 0) {
+                const names = inactiveCategories.map(c => c.name).join(', ');
+                throw new Error(`Неактивные категории: ${names}. Обратитесь к Owner для активации`);
+            }
+        }
 
         // Генерируем slug
         const baseSlug = generateSlug(name);
@@ -134,6 +163,34 @@ class SellerService {
             throw new Error('Доступ запрещён');
         }
 
+        // Если Admin/Manager меняет город - проверяем активность
+        if (userRole !== 'owner' && data.city && data.city !== seller.city?.toString()) {
+            const cityDoc = await City.findById(data.city);
+
+            if (!cityDoc) {
+                throw new Error('Город не найден');
+            }
+
+            if (!cityDoc.isActive) {
+                throw new Error('Можно выбрать только активный город. Обратитесь к Owner для активации города');
+            }
+        }
+
+        // Если Admin/Manager меняет глобальные категории - проверяем активность
+        if (userRole !== 'owner' && data.globalCategories && data.globalCategories.length > 0) {
+            const categories = await Category.find({
+                _id: { $in: data.globalCategories },
+                isGlobal: true
+            });
+
+            const inactiveCategories = categories.filter(cat => !cat.isActive);
+
+            if (inactiveCategories.length > 0) {
+                const names = inactiveCategories.map(c => c.name).join(', ');
+                throw new Error(`Неактивные категории: ${names}. Обратитесь к Owner для активации`);
+            }
+        }
+
         // Если изменяется название, генерируем новый slug
         if (data.name && data.name !== seller.name) {
             const baseSlug = generateSlug(data.name);
@@ -157,6 +214,21 @@ class SellerService {
         // Проверка прав
         if (userRole === 'manager' && seller.createdBy.toString() !== userId.toString()) {
             throw new Error('Доступ запрещён');
+        }
+
+        // Admin/Manager могут выбирать ТОЛЬКО активные категории
+        if (userRole !== 'owner' && globalCategories && globalCategories.length > 0) {
+            const categories = await Category.find({
+                _id: { $in: globalCategories },
+                isGlobal: true
+            });
+
+            const inactiveCategories = categories.filter(cat => !cat.isActive);
+
+            if (inactiveCategories.length > 0) {
+                const names = inactiveCategories.map(c => c.name).join(', ');
+                throw new Error(`Неактивные категории: ${names}. Обратитесь к Owner для активации`);
+            }
         }
 
         seller.globalCategories = globalCategories;
@@ -273,6 +345,35 @@ class SellerService {
         }
 
         return expiredSellers.length;
+    }
+
+    // Удалить продавца (Owner/Admin/Manager своих)
+    async deleteSeller(sellerId, userId, userRole) {
+        const seller = await Seller.findById(sellerId);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // Manager может удалять только своих продавцов
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Доступ запрещён. Вы можете удалять только своих продавцов');
+            }
+        }
+
+        // ВАЖНО: Удаляем все локальные категории продавца
+        await Category.deleteMany({
+            seller: sellerId,
+            isGlobal: false
+        });
+
+        console.log(`✅ Удалены локальные категории продавца ${seller.name}`);
+
+        // Удаляем продавца
+        await Seller.findByIdAndDelete(sellerId);
+
+        return seller;
     }
 }
 

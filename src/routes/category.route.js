@@ -9,16 +9,32 @@ const router = express.Router();
 
 // ========== ГЛОБАЛЬНЫЕ КАТЕГОРИИ ==========
 
-// GET /api/categories/global - Получить все глобальные категории
+// GET /api/categories/global - Получить глобальные категории (публично - только активные)
 router.get(
     '/global',
     categoryController.getGlobalCategories
 );
 
-// GET /api/categories/global/slug/:slug - Получить глобальную категорию по slug
+// GET /api/categories/global/all - Получить ВСЕ глобальные (Owner - включая неактивные)
+router.get(
+    '/global/all',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.ownerOnly,
+    categoryController.getAllGlobalCategories
+);
+
+// GET /api/categories/global/slug/:slug - Получить глобальную категорию по slug (публично - только активные)
 router.get(
     '/global/slug/:slug',
     categoryController.getGlobalCategoryBySlug
+);
+
+// GET /api/categories/global/admin/slug/:slug - Получить глобальную категорию по slug (Owner - включая неактивные)
+router.get(
+    '/global/admin/slug/:slug',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.ownerOnly,
+    categoryController.getGlobalCategoryBySlugAdmin
 );
 
 // POST /api/categories/global - Создать глобальную категорию (Owner only)
@@ -28,6 +44,14 @@ router.post(
     permissionsMiddleware.ownerOnly,
     validationMiddleware.validate(categoryValidator.createGlobalCategorySchema),
     categoryController.createGlobalCategory
+);
+
+// PATCH /api/categories/:id/toggle - Переключить статус категории (Owner only)
+router.patch(
+    '/:id/toggle',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.ownerOnly,
+    categoryController.toggleStatus
 );
 
 // ========== ЛОКАЛЬНЫЕ КАТЕГОРИИ ПРОДАВЦА ==========
@@ -56,20 +80,26 @@ router.post(
 
 // ========== ОБЩИЕ ОПЕРАЦИИ ==========
 
-// PUT /api/categories/:id - Обновить категорию (Owner only для глобальных, Owner/Admin для локальных)
+// PUT /api/categories/:id - Обновить категорию
+// Owner: любые категории
+// Admin: любые локальные категории
+// Manager: только свои локальные категории (продавец active)
 router.put(
     '/:id',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.ownerOnly,
+    permissionsMiddleware.managerAccess,
     validationMiddleware.validate(categoryValidator.updateCategorySchema),
     categoryController.updateCategory
 );
 
-// DELETE /api/categories/:id - Удалить категорию (Owner only для глобальных, Owner/Admin для локальных)
+// DELETE /api/categories/:id - Удалить категорию
+// Owner: любые категории
+// Admin: любые локальные категории
+// Manager: только свои локальные категории (продавец active)
 router.delete(
     '/:id',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.ownerOnly,
+    permissionsMiddleware.managerAccess,
     categoryController.deleteCategory
 );
 

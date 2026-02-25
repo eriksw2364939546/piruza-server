@@ -24,12 +24,25 @@ class CityController {
         }
     }
 
-    // Получить город по slug
+    // Получить город по slug (публично - только активные)
     async getCityBySlug(req, res) {
         try {
             const { slug } = req.params;
 
             const city = await cityService.getCityBySlug(slug);
+
+            success(res, city, 'Город получен');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // Получить город по slug (Owner - включая неактивные)
+    async getCityBySlugAdmin(req, res) {
+        try {
+            const { slug } = req.params;
+
+            const city = await cityService.getCityBySlugAdmin(slug);
 
             success(res, city, 'Город получен');
         } catch (err) {

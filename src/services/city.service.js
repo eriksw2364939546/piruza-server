@@ -20,8 +20,22 @@ class CityService {
         return cities;
     }
 
-    // Получить город по slug
+    // Получить город по slug (публично - только активные)
     async getCityBySlug(slug) {
+        const city = await City.findOne({
+            slug,
+            isActive: true // Только активные
+        });
+
+        if (!city) {
+            throw new Error('Город не найден');
+        }
+
+        return city;
+    }
+
+    // Получить город по slug (Owner - включая неактивные)
+    async getCityBySlugAdmin(slug) {
         const city = await City.findOne({ slug });
 
         if (!city) {

@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import slugify from 'slugify';
 
 const categorySchema = new mongoose.Schema({
     name: {
@@ -11,9 +10,17 @@ const categorySchema = new mongoose.Schema({
         type: String,
         lowercase: true
     },
+    description: {
+        type: String,
+        trim: true
+    },
     isGlobal: {
         type: Boolean,
         default: false
+    },
+    isActive: {
+        type: Boolean,
+        default: false // По умолчанию неактивна до привязки продавцов
     },
     seller: {
         type: mongoose.Schema.Types.ObjectId,
@@ -27,23 +34,6 @@ const categorySchema = new mongoose.Schema({
     }
 }, {
     timestamps: true
-});
-
-// Генерация slug перед сохранением
-categorySchema.pre('save', function (next) {
-    if (this.isModified('name')) {
-        this.slug = slugify(this.name, { lower: true, strict: true, locale: 'fr' });
-    }
-    next();
-});
-
-// Обновление slug при update
-categorySchema.pre('findOneAndUpdate', function (next) {
-    const update = this.getUpdate();
-    if (update.name) {
-        update.slug = slugify(update.name, { lower: true, strict: true, locale: 'fr' });
-    }
-    next();
 });
 
 // Уникальность: глобальные slug уникальны, локальные - внутри продавца

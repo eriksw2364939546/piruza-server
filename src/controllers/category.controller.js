@@ -13,12 +13,25 @@ class CategoryController {
         }
     }
 
-    // Получить глобальную категорию по slug
+    // Получить глобальную категорию по slug (публично - только активные)
     async getGlobalCategoryBySlug(req, res) {
         try {
             const { slug } = req.params;
 
             const category = await categoryService.getGlobalCategoryBySlug(slug);
+
+            success(res, category, 'Категория получена');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // Получить глобальную категорию по slug (Owner - включая неактивные)
+    async getGlobalCategoryBySlugAdmin(req, res) {
+        try {
+            const { slug } = req.params;
+
+            const category = await categoryService.getGlobalCategoryBySlugAdmin(slug);
 
             success(res, category, 'Категория получена');
         } catch (err) {
@@ -79,7 +92,12 @@ class CategoryController {
         try {
             const { id } = req.params;
 
-            const category = await categoryService.updateCategory(id, req.body);
+            const category = await categoryService.updateCategory(
+                id,
+                req.body,
+                req.user.id,
+                req.user.role
+            );
 
             success(res, category, 'Категория обновлена');
         } catch (err) {
@@ -92,9 +110,37 @@ class CategoryController {
         try {
             const { id } = req.params;
 
-            const category = await categoryService.deleteCategory(id);
+            const category = await categoryService.deleteCategory(
+                id,
+                req.user.id,
+                req.user.role
+            );
 
             success(res, category, 'Категория удалена');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Получить ВСЕ глобальные категории (Owner - включая неактивные)
+    async getAllGlobalCategories(req, res) {
+        try {
+            const categories = await categoryService.getAllGlobalCategories();
+
+            success(res, categories, 'Все глобальные категории получены');
+        } catch (err) {
+            error(res, err.message, 500);
+        }
+    }
+
+    // Переключить статус категории (Owner only)
+    async toggleStatus(req, res) {
+        try {
+            const { id } = req.params;
+
+            const category = await categoryService.toggleCategoryStatus(id);
+
+            success(res, category, 'Статус категории изменён');
         } catch (err) {
             error(res, err.message, 400);
         }

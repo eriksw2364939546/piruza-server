@@ -7,22 +7,32 @@ import cityValidator from '../validators/city.validator.js';
 
 const router = express.Router();
 
-// GET /api/cities - Получить все города
+// GET /api/cities - Получить все города (Owner only - включая неактивные)
 router.get(
     '/',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.ownerOnly,
     cityController.getAllCities
 );
 
-// GET /api/cities/active - Получить только активные города
+// GET /api/cities/active - Получить только активные города (публично)
 router.get(
     '/active',
     cityController.getActiveCities
 );
 
-// GET /api/cities/slug/:slug - Получить город по slug
+// GET /api/cities/slug/:slug - Получить город по slug (публично - только активные)
 router.get(
     '/slug/:slug',
     cityController.getCityBySlug
+);
+
+// GET /api/cities/admin/slug/:slug - Получить город по slug (Owner - включая неактивные)
+router.get(
+    '/admin/slug/:slug',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.ownerOnly,
+    cityController.getCityBySlugAdmin
 );
 
 // POST /api/cities - Создать город (Owner only)

@@ -84,7 +84,11 @@ class SellerController {
     // Создать продавца (после одобрения заявки)
     async createSeller(req, res) {
         try {
-            const seller = await sellerService.createSeller(req.body, req.user.id);
+            const seller = await sellerService.createSeller(
+                req.body,
+                req.user.id,
+                req.user.role
+            );
 
             success(res, seller, 'Продавец создан', 201);
         } catch (err) {
@@ -214,6 +218,23 @@ class SellerController {
             );
 
             success(res, seller, 'Продавец переведён в черновик');
+        } catch (err) {
+            error(res, err.message, err.message === 'Доступ запрещён' ? 403 : 400);
+        }
+    }
+
+    // Удалить продавца (Owner/Admin/Manager своих)
+    async deleteSeller(req, res) {
+        try {
+            const { id } = req.params;
+
+            const seller = await sellerService.deleteSeller(
+                id,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, seller, 'Продавец и его локальные категории удалены');
         } catch (err) {
             error(res, err.message, err.message === 'Доступ запрещён' ? 403 : 400);
         }
