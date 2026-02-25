@@ -177,7 +177,12 @@ class AuthService {
 
     // Обновить свой профиль
     async updateOwnProfile(userId, data) {
-        const { email, password, name } = data;
+        const { email, password, name, role } = data;
+
+        // Проверка: нельзя менять свою роль самому себе
+        if (role) {
+            throw new Error('Нельзя изменить свою роль. Только Owner может изменять роли пользователей');
+        }
 
         const user = await User.findById(userId).select('+password');
         if (!user) {
@@ -247,7 +252,7 @@ class AuthService {
             throw new Error('Нельзя редактировать других Owner. Owner только один в системе');
         }
 
-        const { email, password, name, isActive } = data;
+        const { email, password, name, role, isActive } = data;
 
         // Дешифруем текущий email
         const currentEmail = decrypt(targetUser.email);
@@ -276,6 +281,10 @@ class AuthService {
 
         if (name) {
             targetUser.name = encrypt(name);
+        }
+
+        if (role) {
+            targetUser.role = role;
         }
 
         if (isActive !== undefined) {
