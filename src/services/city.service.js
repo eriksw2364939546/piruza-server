@@ -35,6 +35,15 @@ class CityService {
     async createCity(data, userId) {
         const { name } = data;
 
+        // Проверяем существование города с таким же названием (регистронезависимо)
+        const existingCity = await City.findOne({
+            name: { $regex: new RegExp(`^${name}$`, 'i') }
+        });
+
+        if (existingCity) {
+            throw new Error('Город с таким названием уже существует');
+        }
+
         // Генерируем slug из названия
         const baseSlug = generateSlug(name);
         const slug = await generateUniqueSlug(City, baseSlug);
@@ -58,6 +67,16 @@ class CityService {
 
         // Если изменяется название, генерируем новый slug
         if (name) {
+            // Проверяем уникальность названия (кроме текущего города)
+            const existingCity = await City.findOne({
+                name: { $regex: new RegExp(`^${name}$`, 'i') },
+                _id: { $ne: cityId }
+            });
+
+            if (existingCity) {
+                throw new Error('Город с таким названием уже существует');
+            }
+
             updateData.name = name;
             const baseSlug = generateSlug(name);
             updateData.slug = await generateUniqueSlug(City, baseSlug, cityId);
