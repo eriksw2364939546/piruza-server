@@ -90,6 +90,17 @@ class SellerController {
                 req.user.role
             );
 
+            // НОВОЕ: Помечаем заявку как использованную (только для Manager)
+            if (req.user.role === 'manager' && req.approvedRequest) {
+                const { SellerRequest } = await import('../models/index.js');
+
+                req.approvedRequest.isUsed = true;
+                req.approvedRequest.usedAt = new Date();
+                await req.approvedRequest.save();
+
+                console.log(`✅ Заявка ${req.approvedRequest._id} помечена как использованная`);
+            }
+
             success(res, seller, 'Продавец создан', 201);
         } catch (err) {
             error(res, err.message, 400);

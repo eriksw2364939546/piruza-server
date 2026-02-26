@@ -21,6 +21,14 @@ const sellerRequestSchema = new mongoose.Schema({
         enum: ['pending', 'approved', 'rejected'],
         default: 'pending'
     },
+    isUsed: {
+        type: Boolean,
+        default: false // true = уже создан продавец по этой заявке
+    },
+    usedAt: {
+        type: Date,
+        default: null // Когда заявка была использована
+    },
     requestedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User', // Manager, который создал заявку

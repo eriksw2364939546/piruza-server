@@ -106,32 +106,40 @@ class SellerService {
     async createSeller(data, userId, userRole) {
         const { name, city, globalCategories, localCategories, products } = data;
 
+        // НОВОЕ: Проверяем город для ВСЕХ ролей (включая Owner)
+        const cityDoc = await City.findById(city);
+
+        if (!cityDoc) {
+            throw new Error('Город не найден');
+        }
+
         // Admin и Manager должны выбирать ТОЛЬКО активные города
         if (userRole !== 'owner') {
-            const cityDoc = await City.findById(city);
-
-            if (!cityDoc) {
-                throw new Error('Город не найден');
-            }
-
             if (!cityDoc.isActive) {
                 throw new Error('Можно выбрать только активный город. Обратитесь к Owner для активации города');
             }
         }
 
-        // Admin и Manager должны выбирать ТОЛЬКО активные глобальные категории
-        if (userRole !== 'owner' && globalCategories && globalCategories.length > 0) {
+        // НОВОЕ: Проверяем глобальные категории для ВСЕХ ролей
+        if (globalCategories && globalCategories.length > 0) {
             const categories = await Category.find({
                 _id: { $in: globalCategories },
                 isGlobal: true
             });
 
-            // Проверяем что все категории активны
-            const inactiveCategories = categories.filter(cat => !cat.isActive);
+            // Проверяем что ВСЕ переданные категории существуют
+            if (categories.length !== globalCategories.length) {
+                throw new Error('Одна или несколько глобальных категорий не найдены');
+            }
 
-            if (inactiveCategories.length > 0) {
-                const names = inactiveCategories.map(c => c.name).join(', ');
-                throw new Error(`Неактивные категории: ${names}. Обратитесь к Owner для активации`);
+            // Admin и Manager должны выбирать ТОЛЬКО активные категории
+            if (userRole !== 'owner') {
+                const inactiveCategories = categories.filter(cat => !cat.isActive);
+
+                if (inactiveCategories.length > 0) {
+                    const names = inactiveCategories.map(c => c.name).join(', ');
+                    throw new Error(`Неактивные категории: ${names}. Обратитесь к Owner для активации`);
+                }
             }
         }
 
@@ -219,6 +227,8 @@ class SellerService {
 
     // Обновить продавца
     async updateSeller(sellerId, data, userId, userRole) {
+        const { localCategories, products, ...sellerData } = data;
+
         const seller = await Seller.findById(sellerId);
 
         if (!seller) {
@@ -231,8 +241,8 @@ class SellerService {
         }
 
         // Если Admin/Manager меняет город - проверяем активность
-        if (userRole !== 'owner' && data.city && data.city !== seller.city?.toString()) {
-            const cityDoc = await City.findById(data.city);
+        if (userRole !== 'owner' && sellerData.city && sellerData.city !== seller.city?.toString()) {
+            const cityDoc = await City.findById(sellerData.city);
 
             if (!cityDoc) {
                 throw new Error('Город не найден');
@@ -244,11 +254,16 @@ class SellerService {
         }
 
         // Если Admin/Manager меняет глобальные категории - проверяем активность
-        if (userRole !== 'owner' && data.globalCategories && data.globalCategories.length > 0) {
+        if (userRole !== 'owner' && sellerData.globalCategories && sellerData.globalCategories.length > 0) {
             const categories = await Category.find({
-                _id: { $in: data.globalCategories },
+                _id: { $in: sellerData.globalCategories },
                 isGlobal: true
             });
+
+            // Проверяем что все категории существуют
+            if (categories.length !== sellerData.globalCategories.length) {
+                throw new Error('Одна или несколько глобальных категорий не найдены');
+            }
 
             const inactiveCategories = categories.filter(cat => !cat.isActive);
 
@@ -259,13 +274,80 @@ class SellerService {
         }
 
         // Если изменяется название, генерируем новый slug
-        if (data.name && data.name !== seller.name) {
-            const baseSlug = generateSlug(data.name);
-            data.slug = await generateUniqueSlug(Seller, baseSlug, sellerId);
+        if (sellerData.name && sellerData.name !== seller.name) {
+            const baseSlug = generateSlug(sellerData.name);
+            sellerData.slug = await generateUniqueSlug(Seller, baseSlug, sellerId);
         }
 
-        Object.assign(seller, data);
+        // Обновляем основные данные продавца
+        Object.assign(seller, sellerData);
         await seller.save();
+
+        // НОВОЕ: Создаём локальные категории если переданы
+        const createdCategories = [];
+        if (localCategories && localCategories.length > 0) {
+            for (const catData of localCategories) {
+                const catSlug = generateSlug(catData.name);
+
+                // Проверяем уникальность slug внутри продавца
+                let uniqueSlug = catSlug;
+                let counter = 1;
+                while (await Category.findOne({ slug: uniqueSlug, seller: seller._id, isGlobal: false })) {
+                    uniqueSlug = `${catSlug}-${counter}`;
+                    counter++;
+                }
+
+                const category = new Category({
+                    name: catData.name,
+                    description: catData.description,
+                    slug: uniqueSlug,
+                    isGlobal: false,
+                    isActive: true,
+                    seller: seller._id,
+                    createdBy: userId
+                });
+
+                await category.save();
+                createdCategories.push(category);
+            }
+
+            console.log(`✅ Создано ${createdCategories.length} локальных категорий для продавца ${seller.name}`);
+        }
+
+        // НОВОЕ: Создаём товары если переданы
+        if (products && products.length > 0) {
+            for (const productData of products) {
+                // Если указан categoryIndex - берём категорию из созданных
+                let categoryId = null;
+                if (productData.categoryIndex !== undefined && createdCategories[productData.categoryIndex]) {
+                    categoryId = createdCategories[productData.categoryIndex]._id;
+                }
+
+                const productSlug = generateSlug(productData.name);
+
+                // Проверяем уникальность slug внутри продавца
+                let uniqueProductSlug = productSlug;
+                let counter = 1;
+                while (await Product.findOne({ slug: uniqueProductSlug, seller: seller._id })) {
+                    uniqueProductSlug = `${productSlug}-${counter}`;
+                    counter++;
+                }
+
+                const product = new Product({
+                    name: productData.name,
+                    code: productData.code,
+                    description: productData.description,
+                    price: productData.price,
+                    slug: uniqueProductSlug,
+                    seller: seller._id,
+                    category: categoryId
+                });
+
+                await product.save();
+            }
+
+            console.log(`✅ Создано ${products.length} товаров для продавца ${seller.name}`);
+        }
 
         return seller;
     }

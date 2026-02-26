@@ -100,6 +100,25 @@ class SellerValidator {
 
         globalCategories: Joi.array()
             .items(Joi.string())
+            .optional(),
+
+        // НОВОЕ: Локальные категории
+        localCategories: Joi.array()
+            .items(Joi.object({
+                name: Joi.string().required(),
+                description: Joi.string().optional()
+            }))
+            .optional(),
+
+        // НОВОЕ: Товары
+        products: Joi.array()
+            .items(Joi.object({
+                name: Joi.string().required(),
+                code: Joi.string().optional(),
+                description: Joi.string().optional(),
+                price: Joi.number().min(0).optional(),
+                categoryIndex: Joi.number().integer().min(0).optional()
+            }))
             .optional()
     });
 

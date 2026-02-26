@@ -13,7 +13,7 @@ class PermissionsMiddleware {
     }
 
     // Доступ только для Manager
-    managerOnly(req, res, next) {
+    managerOnly = (req, res, next) => {
         if (req.user.role !== 'manager') {
             return res.status(403).json({
                 success: false,
@@ -212,20 +212,21 @@ class PermissionsMiddleware {
 
             // Manager ДОЛЖЕН иметь одобренную заявку
             if (req.user.role === 'manager') {
-                // Ищем одобренную заявку Manager'а
+                // Ищем одобренную И НЕиспользованную заявку Manager'а
                 const approvedRequest = await SellerRequest.findOne({
                     requestedBy: req.user.id,
-                    status: 'approved'
+                    status: 'approved',
+                    isUsed: false // ВАЖНО: только неиспользованные
                 }).sort({ reviewedAt: -1 }); // Последняя одобренная
 
                 if (!approvedRequest) {
                     return res.status(403).json({
                         success: false,
-                        message: 'У вас нет одобренной заявки. Создайте заявку через /api/requests и дождитесь одобрения Owner/Admin'
+                        message: 'У вас нет доступной одобренной заявки. Создайте новую заявку через /api/requests и дождитесь одобрения Owner/Admin'
                     });
                 }
 
-                // Добавляем заявку в req для использования в контроллере (опционально)
+                // Добавляем заявку в req для использования в контроллере
                 req.approvedRequest = approvedRequest;
 
                 return next();
