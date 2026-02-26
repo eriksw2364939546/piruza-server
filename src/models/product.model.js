@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import slugify from 'slugify';
 
 const productSchema = new mongoose.Schema({
     name: {
@@ -42,23 +41,6 @@ const productSchema = new mongoose.Schema({
     }
 }, {
     timestamps: true
-});
-
-// Генерация slug перед сохранением
-productSchema.pre('save', function (next) {
-    if (this.isModified('name')) {
-        this.slug = slugify(this.name, { lower: true, strict: true, locale: 'fr' });
-    }
-    next();
-});
-
-// Обновление slug при update
-productSchema.pre('findOneAndUpdate', function (next) {
-    const update = this.getUpdate();
-    if (update.name) {
-        update.slug = slugify(update.name, { lower: true, strict: true, locale: 'fr' });
-    }
-    next();
 });
 
 // Уникальность slug внутри продавца

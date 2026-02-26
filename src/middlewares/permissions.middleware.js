@@ -1,8 +1,8 @@
-import { Seller } from '../models/index.js';
+import { Seller, Product } from '../models/index.js';
 
 class PermissionsMiddleware {
     // Доступ только для Owner
-    ownerOnly(req, res, next) {
+    ownerOnly = (req, res, next) => {
         if (req.user.role !== 'owner') {
             return res.status(403).json({
                 success: false,
@@ -24,7 +24,7 @@ class PermissionsMiddleware {
     }
 
     // Доступ для Owner и Admin (НЕ для Manager)
-    adminAccess(req, res, next) {
+    adminAccess = (req, res, next) => {
         if (req.user.role !== 'owner' && req.user.role !== 'admin') {
             return res.status(403).json({
                 success: false,
@@ -35,7 +35,7 @@ class PermissionsMiddleware {
     }
 
     // Доступ для Owner, Admin и Manager
-    managerAccess(req, res, next) {
+    managerAccess = (req, res, next) => {
         const allowedRoles = ['owner', 'admin', 'manager'];
 
         if (!allowedRoles.includes(req.user.role)) {
@@ -48,7 +48,7 @@ class PermissionsMiddleware {
     }
 
     // Проверка владения продавцом (для Manager)
-    async checkSellerOwnership(req, res, next) {
+    checkSellerOwnership = async (req, res, next) => {
         try {
             const sellerId = req.params.id || req.params.sellerId;
 
@@ -83,6 +83,7 @@ class PermissionsMiddleware {
 
             next();
         } catch (error) {
+            console.error('❌ Ошибка checkSellerOwnership:', error);
             return res.status(500).json({
                 success: false,
                 message: 'Ошибка проверки прав доступа'
@@ -91,7 +92,7 @@ class PermissionsMiddleware {
     }
 
     // Проверка доступа к локальным категориям продавца
-    async checkSellerCategoryAccess(req, res, next) {
+    checkSellerCategoryAccess = async (req, res, next) => {
         try {
             const sellerId = req.body.seller || req.params.sellerId;
 
@@ -127,9 +128,6 @@ class PermissionsMiddleware {
                     });
                 }
 
-                // ✅ УБРАЛИ ПРОВЕРКУ СТАТУСА - Manager может работать с draft продавцом
-                // Manager может создавать категории для своего продавца независимо от статуса
-
                 return next();
             }
 
@@ -139,6 +137,7 @@ class PermissionsMiddleware {
                 message: 'Доступ запрещён'
             });
         } catch (error) {
+            console.error('❌ Ошибка checkSellerCategoryAccess:', error);
             return res.status(500).json({
                 success: false,
                 message: 'Ошибка проверки прав доступа к категориям'
@@ -147,16 +146,44 @@ class PermissionsMiddleware {
     }
 
     // Проверка доступа к товарам продавца (для Manager)
-    async checkProductAccess(req, res, next) {
+    checkProductAccess = async (req, res, next) => {
         try {
+            console.log('🔍 checkProductAccess вызван');
+            console.log('   req.user.role:', req.user.role);
+            console.log('   req.params:', req.params);
+            console.log('   req.body:', req.body);
+
             // Owner и Admin могут управлять всеми товарами
             if (req.user.role === 'owner' || req.user.role === 'admin') {
+                console.log('✅ Owner/Admin - доступ разрешён');
                 return next();
             }
 
             // Manager может управлять только товарами СВОИХ продавцов
             if (req.user.role === 'manager') {
-                const sellerId = req.body.seller || req.params.sellerId;
+                let sellerId = (req.body && req.body.seller) || req.params.sellerId;
+                console.log('   sellerId из body/params:', sellerId);
+
+                // НОВОЕ: Если sellerId нет (например, при загрузке картинки товара),
+                // получаем товар по ID и достаём seller из товара
+                if (!sellerId && req.params.id) {
+                    console.log('   Получаю товар по ID:', req.params.id);
+                    console.log('   Product модель:', Product);
+
+                    const product = await Product.findById(req.params.id);
+                    console.log('   Найденный товар:', product);
+
+                    if (!product) {
+                        console.log('❌ Товар не найден!');
+                        return res.status(404).json({
+                            success: false,
+                            message: 'Товар не найден'
+                        });
+                    }
+
+                    sellerId = product.seller;
+                    console.log('   sellerId из товара:', sellerId);
+                }
 
                 if (!sellerId) {
                     return res.status(400).json({
@@ -182,9 +209,6 @@ class PermissionsMiddleware {
                     });
                 }
 
-                // ✅ УБРАЛИ ПРОВЕРКУ СТАТУСА - Manager может работать с draft продавцом
-                // Manager может создавать товары для своего продавца независимо от статуса
-
                 return next();
             }
 
@@ -193,6 +217,7 @@ class PermissionsMiddleware {
                 message: 'Доступ запрещён'
             });
         } catch (error) {
+            console.error('❌ Ошибка checkProductAccess:', error);
             return res.status(500).json({
                 success: false,
                 message: 'Ошибка проверки прав доступа к товарам'
@@ -201,7 +226,7 @@ class PermissionsMiddleware {
     }
 
     // Проверка одобренной заявки для Manager (для создания продавца)
-    async checkApprovedRequest(req, res, next) {
+    checkApprovedRequest = async (req, res, next) => {
         try {
             const { SellerRequest } = await import('../models/index.js');
 
@@ -237,6 +262,7 @@ class PermissionsMiddleware {
                 message: 'Доступ запрещён'
             });
         } catch (error) {
+            console.error('❌ Ошибка checkApprovedRequest:', error);
             return res.status(500).json({
                 success: false,
                 message: 'Ошибка проверки одобренной заявки'

@@ -103,6 +103,7 @@ class SellerController {
 
             success(res, seller, 'Продавец создан', 201);
         } catch (err) {
+            console.error('❌ Ошибка создания продавца:', err);
             error(res, err.message, 400);
         }
     }
