@@ -1,4 +1,4 @@
-import { Category } from '../models/index.js';
+import { Category, Seller } from '../models/index.js';
 import { generateSlug, generateUniqueSlug } from '../utils/slug.util.js';
 
 class CategoryService {
@@ -108,7 +108,14 @@ class CategoryService {
 
     // Создать локальную категорию продавца
     async createSellerCategory(data, userId) {
-        const { name, seller } = data;
+        const { name, seller, description } = data;
+
+        // Проверяем существование продавца
+        const sellerDoc = await Seller.findById(seller);
+
+        if (!sellerDoc) {
+            throw new Error('Продавец не найден. Локальная категория не может существовать без продавца');
+        }
 
         // Генерируем slug
         const baseSlug = generateSlug(name);
@@ -124,7 +131,9 @@ class CategoryService {
         const category = new Category({
             name,
             slug,
+            description,
             isGlobal: false,
+            isActive: true, // Локальные категории сразу активны
             seller,
             createdBy: userId
         });
@@ -135,10 +144,10 @@ class CategoryService {
 
     // Обновить категорию
     async updateCategory(categoryId, data, userId, userRole) {
-        const { name, description } = data;
+        const { name, description, isActive } = data;
 
-        if (!name && !description) {
-            throw new Error('Название или описание обязательно для обновления');
+        if (!name && !description && isActive === undefined) {
+            throw new Error('Название, описание или статус обязательно для обновления');
         }
 
         const category = await Category.findById(categoryId).populate('seller');
@@ -167,11 +176,6 @@ class CategoryService {
                     // Проверка владения продавцом
                     if (seller.createdBy.toString() !== userId.toString()) {
                         throw new Error('Доступ запрещён. Вы можете обновлять только категории своих продавцов');
-                    }
-
-                    // Проверка статуса продавца
-                    if (seller.status !== 'active') {
-                        throw new Error('Продавец должен быть одобрен Owner/Admin для управления категориями');
                     }
                 }
             }
@@ -215,6 +219,14 @@ class CategoryService {
         // Обновляем описание если передано
         if (description !== undefined) {
             category.description = description;
+        }
+
+        // НОВОЕ: Обновляем isActive если передано (только Owner для глобальных)
+        if (isActive !== undefined) {
+            if (category.isGlobal && userRole !== 'owner') {
+                throw new Error('Только Owner может изменять статус глобальных категорий');
+            }
+            category.isActive = isActive;
         }
 
         await category.save();
@@ -268,20 +280,6 @@ class CategoryService {
 
         // Если дошли сюда - удаляем (Owner удаляет глобальную)
         await Category.findByIdAndDelete(categoryId);
-        return category;
-    }
-
-    // Переключить статус категории (Owner only для глобальных)
-    async toggleCategoryStatus(categoryId) {
-        const category = await Category.findById(categoryId);
-
-        if (!category) {
-            throw new Error('Категория не найдена');
-        }
-
-        category.isActive = !category.isActive;
-        await category.save();
-
         return category;
     }
 }

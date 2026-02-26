@@ -132,19 +132,6 @@ class CategoryController {
             error(res, err.message, 500);
         }
     }
-
-    // Переключить статус категории (Owner only)
-    async toggleStatus(req, res) {
-        try {
-            const { id } = req.params;
-
-            const category = await categoryService.toggleCategoryStatus(id);
-
-            success(res, category, 'Статус категории изменён');
-        } catch (err) {
-            error(res, err.message, 400);
-        }
-    }
 }
 
 export default new CategoryController();

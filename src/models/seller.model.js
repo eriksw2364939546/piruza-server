@@ -88,21 +88,5 @@ const sellerSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Генерация slug перед сохранением
-sellerSchema.pre('save', function (next) {
-    if (this.isModified('name')) {
-        this.slug = slugify(this.name, { lower: true, strict: true, locale: 'fr' });
-    }
-    next();
-});
-
-// Обновление slug при update
-sellerSchema.pre('findOneAndUpdate', function (next) {
-    const update = this.getUpdate();
-    if (update.name) {
-        update.slug = slugify(update.name, { lower: true, strict: true, locale: 'fr' });
-    }
-    next();
-});
 
 export default mongoose.model('Seller', sellerSchema);

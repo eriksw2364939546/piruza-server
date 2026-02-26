@@ -116,13 +116,8 @@ class PermissionsMiddleware {
                     });
                 }
 
-                // Проверка статуса продавца - должен быть одобрен
-                if (seller.status !== 'active') {
-                    return res.status(403).json({
-                        success: false,
-                        message: 'Продавец должен быть одобрен Owner/Admin для управления категориями'
-                    });
-                }
+                // ✅ УБРАЛИ ПРОВЕРКУ СТАТУСА - Manager может работать с draft продавцом
+                // Manager может создавать категории для своего продавца независимо от статуса
 
                 return next();
             }
@@ -176,13 +171,8 @@ class PermissionsMiddleware {
                     });
                 }
 
-                // Проверка статуса продавца
-                if (seller.status !== 'active') {
-                    return res.status(403).json({
-                        success: false,
-                        message: 'Продавец должен быть одобрен Owner/Admin для управления товарами'
-                    });
-                }
+                // ✅ УБРАЛИ ПРОВЕРКУ СТАТУСА - Manager может работать с draft продавцом
+                // Manager может создавать товары для своего продавца независимо от статуса
 
                 return next();
             }

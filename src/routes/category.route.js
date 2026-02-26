@@ -46,14 +46,6 @@ router.post(
     categoryController.createGlobalCategory
 );
 
-// PATCH /api/categories/:id/toggle - Переключить статус категории (Owner only)
-router.patch(
-    '/:id/toggle',
-    authMiddleware.protectAdmin,
-    permissionsMiddleware.ownerOnly,
-    categoryController.toggleStatus
-);
-
 // ========== ЛОКАЛЬНЫЕ КАТЕГОРИИ ПРОДАВЦА ==========
 
 // GET /api/categories/seller/:sellerId - Получить категории продавца

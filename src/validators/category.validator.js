@@ -52,7 +52,13 @@ class CategoryValidator {
             .optional()
             .messages({
                 'string.min': 'Название категории должно быть минимум 2 символа'
-            })
+            }),
+
+        description: Joi.string()
+            .optional(),
+
+        isActive: Joi.boolean()
+            .optional()
     });
 }
 

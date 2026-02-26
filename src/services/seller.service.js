@@ -1,4 +1,4 @@
-import { Seller, City, Category } from '../models/index.js';
+import { Seller, City, Category, Product } from '../models/index.js';
 import { generateSlug, generateUniqueSlug } from '../utils/slug.util.js';
 import { sendActivationEmail } from '../utils/email.util.js';
 
@@ -104,7 +104,7 @@ class SellerService {
 
     // Создать продавца (после одобрения заявки)
     async createSeller(data, userId, userRole) {
-        const { name, city, globalCategories } = data;
+        const { name, city, globalCategories, localCategories, products } = data;
 
         // Admin и Manager должны выбирать ТОЛЬКО активные города
         if (userRole !== 'owner') {
@@ -147,6 +147,73 @@ class SellerService {
         });
 
         await seller.save();
+
+        // НОВОЕ: Создаём локальные категории если переданы
+        const createdCategories = [];
+        if (localCategories && localCategories.length > 0) {
+            for (const catData of localCategories) {
+                const catSlug = generateSlug(catData.name);
+
+                // Проверяем уникальность slug внутри продавца
+                let uniqueSlug = catSlug;
+                let counter = 1;
+                while (await Category.findOne({ slug: uniqueSlug, seller: seller._id, isGlobal: false })) {
+                    uniqueSlug = `${catSlug}-${counter}`;
+                    counter++;
+                }
+
+                const category = new Category({
+                    name: catData.name,
+                    description: catData.description,
+                    slug: uniqueSlug,
+                    isGlobal: false,
+                    isActive: true, // Локальные категории сразу активны
+                    seller: seller._id,
+                    createdBy: userId
+                });
+
+                await category.save();
+                createdCategories.push(category);
+            }
+
+            console.log(`✅ Создано ${createdCategories.length} локальных категорий для продавца ${seller.name}`);
+        }
+
+        // НОВОЕ: Создаём товары если переданы
+        if (products && products.length > 0) {
+            for (const productData of products) {
+                // Если указан categoryIndex - берём категорию из созданных
+                let categoryId = null;
+                if (productData.categoryIndex !== undefined && createdCategories[productData.categoryIndex]) {
+                    categoryId = createdCategories[productData.categoryIndex]._id;
+                }
+
+                const productSlug = generateSlug(productData.name);
+
+                // Проверяем уникальность slug внутри продавца
+                let uniqueProductSlug = productSlug;
+                let counter = 1;
+                while (await Product.findOne({ slug: uniqueProductSlug, seller: seller._id })) {
+                    uniqueProductSlug = `${productSlug}-${counter}`;
+                    counter++;
+                }
+
+                const product = new Product({
+                    name: productData.name,
+                    code: productData.code,
+                    description: productData.description,
+                    price: productData.price,
+                    slug: uniqueProductSlug,
+                    seller: seller._id,
+                    category: categoryId
+                });
+
+                await product.save();
+            }
+
+            console.log(`✅ Создано ${products.length} товаров для продавца ${seller.name}`);
+        }
+
         return seller;
     }
 
