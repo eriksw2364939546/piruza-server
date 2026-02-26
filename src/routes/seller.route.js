@@ -53,6 +53,7 @@ router.post(
     '/',
     authMiddleware.protectAdmin,
     permissionsMiddleware.managerAccess,
+    permissionsMiddleware.checkApprovedRequest, // НОВОЕ: Проверка одобренной заявки для Manager
     validationMiddleware.validate(sellerValidator.createSellerSchema),
     sellerController.createSeller
 );

@@ -12,6 +12,17 @@ class PermissionsMiddleware {
         next();
     }
 
+    // Доступ только для Manager
+    managerOnly(req, res, next) {
+        if (req.user.role !== 'manager') {
+            return res.status(403).json({
+                success: false,
+                message: 'Доступ запрещён. Требуется роль Manager'
+            });
+        }
+        next();
+    }
+
     // Доступ для Owner и Admin (НЕ для Manager)
     adminAccess(req, res, next) {
         if (req.user.role !== 'owner' && req.user.role !== 'admin') {
@@ -185,6 +196,49 @@ class PermissionsMiddleware {
             return res.status(500).json({
                 success: false,
                 message: 'Ошибка проверки прав доступа к товарам'
+            });
+        }
+    }
+
+    // Проверка одобренной заявки для Manager (для создания продавца)
+    async checkApprovedRequest(req, res, next) {
+        try {
+            const { SellerRequest } = await import('../models/index.js');
+
+            // Owner и Admin могут создавать продавцов БЕЗ заявки
+            if (req.user.role === 'owner' || req.user.role === 'admin') {
+                return next();
+            }
+
+            // Manager ДОЛЖЕН иметь одобренную заявку
+            if (req.user.role === 'manager') {
+                // Ищем одобренную заявку Manager'а
+                const approvedRequest = await SellerRequest.findOne({
+                    requestedBy: req.user.id,
+                    status: 'approved'
+                }).sort({ reviewedAt: -1 }); // Последняя одобренная
+
+                if (!approvedRequest) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'У вас нет одобренной заявки. Создайте заявку через /api/requests и дождитесь одобрения Owner/Admin'
+                    });
+                }
+
+                // Добавляем заявку в req для использования в контроллере (опционально)
+                req.approvedRequest = approvedRequest;
+
+                return next();
+            }
+
+            return res.status(403).json({
+                success: false,
+                message: 'Доступ запрещён'
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: 'Ошибка проверки одобренной заявки'
             });
         }
     }

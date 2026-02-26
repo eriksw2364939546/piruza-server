@@ -9,11 +9,11 @@ const router = express.Router();
 
 // ========== MANAGER РОУТЫ ==========
 
-// POST /api/requests - Создать заявку (Manager)
+// POST /api/requests - Создать заявку (ТОЛЬКО Manager)
 router.post(
     '/',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.managerAccess,
+    permissionsMiddleware.managerOnly, // ИЗМЕНЕНО: Только Manager
     validationMiddleware.validate(sellerRequestValidator.createRequestSchema),
     sellerRequestController.createRequest
 );
