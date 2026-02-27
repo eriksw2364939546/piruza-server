@@ -7,7 +7,11 @@ class ProductController {
         try {
             const { sellerId } = req.params;
 
-            const products = await productService.getProductsBySeller(sellerId);
+            // Передаём userId и userRole если токен есть
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
+
+            const products = await productService.getProductsBySeller(sellerId, userId, userRole);
 
             success(res, products, 'Товары получены');
         } catch (err) {
@@ -20,7 +24,11 @@ class ProductController {
         try {
             const { sellerId, slug } = req.params;
 
-            const product = await productService.getProductBySlug(sellerId, slug);
+            // Передаём userId и userRole если токен есть
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
+
+            const product = await productService.getProductBySlug(sellerId, slug, userId, userRole);
 
             success(res, product, 'Товар получен');
         } catch (err) {
@@ -74,7 +82,7 @@ class ProductController {
         }
     }
 
-    // Загрузить изображение товара
+    // Загрузить изображение товара (POST)
     async uploadProductImage(req, res) {
         try {
             const { id } = req.params;
@@ -91,6 +99,45 @@ class ProductController {
             );
 
             success(res, product, 'Изображение загружено');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Заменить изображение товара (PUT)
+    async replaceProductImage(req, res) {
+        try {
+            const { id } = req.params;
+
+            if (!req.processedImage) {
+                return error(res, 'Изображение не загружено', 400);
+            }
+
+            const product = await productService.replaceProductImage(
+                id,
+                req.processedImage,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, product, 'Изображение заменено');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // НОВОЕ: Удалить изображение товара
+    async deleteProductImage(req, res) {
+        try {
+            const { id } = req.params;
+
+            const product = await productService.deleteProductImage(
+                id,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, product, 'Изображение удалено');
         } catch (err) {
             error(res, err.message, 400);
         }

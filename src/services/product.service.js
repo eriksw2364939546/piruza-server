@@ -3,25 +3,127 @@ import { generateSlug } from '../utils/slug.util.js';
 
 class ProductService {
     // Получить товары продавца
-    async getProductsBySeller(sellerId) {
-        const products = await Product.find({ seller: sellerId })
-            .populate('category', 'name slug')
-            .sort({ createdAt: -1 });
+    // Публично: только active продавцы
+    // Owner/Admin: все продавцы
+    // Manager: свои продавцы (любой статус)
+    async getProductsBySeller(sellerId, userId = null, userRole = null) {
+        // Если НЕТ токена (публичный доступ) - проверяем статус продавца
+        if (!userId || !userRole) {
+            const seller = await Seller.findOne({
+                _id: sellerId,
+                status: 'active',
+                activationEndDate: { $gt: new Date() }
+            });
 
-        return products;
-    }
+            if (!seller) {
+                throw new Error('Продавец не найден или неактивен');
+            }
 
-    // Получить товар по slug (внутри продавца)
-    async getProductBySlug(sellerId, slug) {
-        const product = await Product.findOne({ seller: sellerId, slug })
-            .populate('category', 'name slug')
-            .populate('seller', 'name slug');
+            const products = await Product.find({ seller: sellerId })
+                .populate('category', 'name slug')
+                .sort({ createdAt: -1 });
 
-        if (!product) {
-            throw new Error('Товар не найден');
+            return products;
         }
 
-        return product;
+        // Если ЕСТЬ токен - проверяем права
+        const seller = await Seller.findById(sellerId);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // Owner и Admin видят всех
+        if (userRole === 'owner' || userRole === 'admin') {
+            const products = await Product.find({ seller: sellerId })
+                .populate('category', 'name slug')
+                .sort({ createdAt: -1 });
+
+            return products;
+        }
+
+        // Manager видит только своих (любой статус)
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Доступ запрещён. Вы можете видеть только товары своих продавцов');
+            }
+
+            const products = await Product.find({ seller: sellerId })
+                .populate('category', 'name slug')
+                .sort({ createdAt: -1 });
+
+            return products;
+        }
+
+        throw new Error('Доступ запрещён');
+    }
+
+    // Получить товар по slug
+    // Публично: только active продавцы
+    // Owner/Admin: все продавцы
+    // Manager: свои продавцы (любой статус)
+    async getProductBySlug(sellerId, slug, userId = null, userRole = null) {
+        // Если НЕТ токена (публичный доступ) - проверяем статус продавца
+        if (!userId || !userRole) {
+            const seller = await Seller.findOne({
+                _id: sellerId,
+                status: 'active',
+                activationEndDate: { $gt: new Date() }
+            });
+
+            if (!seller) {
+                throw new Error('Продавец не найден или неактивен');
+            }
+
+            const product = await Product.findOne({ seller: sellerId, slug })
+                .populate('category', 'name slug')
+                .populate('seller', 'name slug');
+
+            if (!product) {
+                throw new Error('Товар не найден');
+            }
+
+            return product;
+        }
+
+        // Если ЕСТЬ токен - проверяем права
+        const seller = await Seller.findById(sellerId);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // Owner и Admin видят всех
+        if (userRole === 'owner' || userRole === 'admin') {
+            const product = await Product.findOne({ seller: sellerId, slug })
+                .populate('category', 'name slug')
+                .populate('seller', 'name slug');
+
+            if (!product) {
+                throw new Error('Товар не найден');
+            }
+
+            return product;
+        }
+
+        // Manager видит только своих (любой статус)
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Доступ запрещён. Вы можете видеть только товары своих продавцов');
+            }
+
+            const product = await Product.findOne({ seller: sellerId, slug })
+                .populate('category', 'name slug')
+                .populate('seller', 'name slug');
+
+            if (!product) {
+                throw new Error('Товар не найден');
+            }
+
+            return product;
+        }
+
+        throw new Error('Доступ запрещён');
     }
 
     // Получить товар по ID
@@ -125,6 +227,56 @@ class ProductService {
 
         await Product.findByIdAndDelete(productId);
         return product;
+    }
+    // Заменить изображение товара (с удалением старого файла)
+    async replaceProductImage(productId, newImagePath, userId, userRole) {
+        // Получаем товар
+        const product = await this.getProductById(productId);
+        const oldImagePath = product.image;
+
+        // Удаляем старый файл
+        if (oldImagePath) {
+            const fs = await import('fs/promises');
+            const path = await import('path');
+            const oldFilePath = path.join(process.cwd(), 'public', oldImagePath);
+
+            try {
+                await fs.unlink(oldFilePath);
+                console.log(`🗑️  Удалён старый файл товара: ${oldImagePath}`);
+            } catch (err) {
+                console.log(`⚠️  Не удалось удалить старый файл товара: ${oldImagePath}`);
+            }
+        }
+
+        // Обновляем товар
+        return await this.updateProduct(productId, { image: newImagePath }, userId, userRole);
+    }
+
+    // Удалить изображение товара
+    async deleteProductImage(productId, userId, userRole) {
+        // Получаем товар
+        const product = await this.getProductById(productId);
+
+        if (!product.image) {
+            throw new Error('У товара нет изображения');
+        }
+
+        const oldImagePath = product.image;
+
+        // Удаляем файл с диска
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        const oldFilePath = path.join(process.cwd(), 'public', oldImagePath);
+
+        try {
+            await fs.unlink(oldFilePath);
+            console.log(`🗑️  Удалено изображение товара: ${oldImagePath}`);
+        } catch (err) {
+            console.log(`⚠️  Не удалось удалить файл: ${oldImagePath}`);
+        }
+
+        // Обновляем товар
+        return await this.updateProduct(productId, { image: null }, userId, userRole);
     }
 }
 

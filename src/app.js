@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { setupRoutes } from './routes/index.js';
+import staticFilesMiddleware from './middlewares/staticfiles.middleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +15,20 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Статические файлы (uploads)
+// ВАЖНО: Защита статических файлов (ПЕРЕД express.static!)
+// Используем функцию для проверки пути
+app.use('/uploads', (req, res, next) => {
+    // Проверяем путь и вызываем соответствующий middleware
+    if (req.path.startsWith('/sellers/')) {
+        return staticFilesMiddleware.protectSellerFiles(req, res, next);
+    } else if (req.path.startsWith('/products/')) {
+        return staticFilesMiddleware.protectProductFiles(req, res, next);
+    }
+    // Если не sellers и не products - пропускаем дальше
+    next();
+});
+
+// Статические файлы (uploads) - ПОСЛЕ middleware защиты
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
 // Health check

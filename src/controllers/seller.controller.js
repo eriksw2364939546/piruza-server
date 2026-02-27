@@ -40,13 +40,29 @@ class SellerController {
     // Получить публичных продавцов (только active)
     async getPublicSellers(req, res) {
         try {
+            console.log('📦 getPublicSellers CALLED');
+            console.log('   req.params:', req.params);
+            console.log('   req.query:', req.query);
+            console.log('   req.user:', req.user);
+
             const { cityId } = req.params;
             const { category } = req.query;
 
-            const sellers = await sellerService.getPublicSellers(cityId, category);
+            // Передаём userId и userRole если есть токен
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
 
+            console.log('   Extracted cityId:', cityId);
+            console.log('   Extracted category:', category);
+            console.log('   userId:', userId);
+            console.log('   userRole:', userRole);
+
+            const sellers = await sellerService.getPublicSellers(cityId, category, userId, userRole);
+
+            console.log('   Found sellers:', sellers.length);
             success(res, sellers, 'Продавцы получены');
         } catch (err) {
+            console.error('❌ getPublicSellers ERROR:', err.message);
             error(res, err.message, 500);
         }
     }
@@ -56,7 +72,11 @@ class SellerController {
         try {
             const { slug } = req.params;
 
-            const seller = await sellerService.getSellerBySlug(slug);
+            // Передаём userId и userRole если токен есть
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
+
+            const seller = await sellerService.getSellerBySlug(slug, userId, userRole);
 
             success(res, seller, 'Продавец получен');
         } catch (err) {
@@ -64,23 +84,36 @@ class SellerController {
         }
     }
 
-    // Получить продавца по ID
+    // Получить продавца по ID + роь и  статус
     async getSellerById(req, res) {
         try {
+            console.log('🔍 getSellerById CALLED');
+            console.log('   req.params:', req.params);
+            console.log('   req.user:', req.user);
+
             const { id } = req.params;
+
+            // Передаём userId и userRole (могут быть null для публичного доступа)
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
+
+            console.log('   id:', id);
+            console.log('   userId:', userId);
+            console.log('   userRole:', userRole);
 
             const seller = await sellerService.getSellerById(
                 id,
-                req.user.id,
-                req.user.role
+                userId,
+                userRole
             );
 
+            console.log('   Found seller:', seller.name);
             success(res, seller, 'Продавец получен');
         } catch (err) {
+            console.error('❌ getSellerById ERROR:', err.message);
             error(res, err.message, err.message === 'Доступ запрещён' ? 403 : 404);
         }
     }
-
     // Создать продавца (после одобрения заявки)
     async createSeller(req, res) {
         try {
@@ -145,33 +178,123 @@ class SellerController {
         }
     }
 
-    // Загрузить изображения (logo, cover)
-    async uploadSellerImages(req, res) {
+    // Загрузить logo (POST)
+    async uploadSellerLogo(req, res) {
         try {
             const { id } = req.params;
-            const { type } = req.query; // 'logo' или 'cover'
 
             if (!req.processedImage) {
                 return error(res, 'Изображение не загружено', 400);
             }
 
-            const updateData = {};
-            if (type === 'logo') {
-                updateData.logo = req.processedImage;
-            } else if (type === 'cover') {
-                updateData.coverImage = req.processedImage;
-            } else {
-                return error(res, 'Неверный тип изображения (logo или cover)', 400);
-            }
-
             const seller = await sellerService.updateSeller(
                 id,
-                updateData,
+                { logo: req.processedImage },
                 req.user.id,
                 req.user.role
             );
 
-            success(res, seller, 'Изображение загружено');
+            success(res, seller, 'Logo загружен');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Заменить logo (PUT)
+    async replaceSellerLogo(req, res) {
+        try {
+            const { id } = req.params;
+
+            if (!req.processedImage) {
+                return error(res, 'Изображение не загружено', 400);
+            }
+
+            const seller = await sellerService.replaceSellerLogo(
+                id,
+                req.processedImage,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, seller, 'Logo заменён');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Удалить logo (DELETE)
+    async deleteSellerLogo(req, res) {
+        try {
+            const { id } = req.params;
+
+            const seller = await sellerService.deleteSellerLogo(
+                id,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, seller, 'Logo удалён');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Загрузить cover (POST)
+    async uploadSellerCover(req, res) {
+        try {
+            const { id } = req.params;
+
+            if (!req.processedImage) {
+                return error(res, 'Изображение не загружено', 400);
+            }
+
+            const seller = await sellerService.updateSeller(
+                id,
+                { coverImage: req.processedImage },
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, seller, 'Cover загружен');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Заменить cover (PUT)
+    async replaceSellerCover(req, res) {
+        try {
+            const { id } = req.params;
+
+            if (!req.processedImage) {
+                return error(res, 'Изображение не загружено', 400);
+            }
+
+            const seller = await sellerService.replaceSellerCover(
+                id,
+                req.processedImage,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, seller, 'Cover заменён');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Удалить cover (DELETE)
+    async deleteSellerCover(req, res) {
+        try {
+            const { id } = req.params;
+
+            const seller = await sellerService.deleteSellerCover(
+                id,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, seller, 'Cover удалён');
         } catch (err) {
             error(res, err.message, 400);
         }
