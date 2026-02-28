@@ -40,29 +40,13 @@ class SellerController {
     // Получить публичных продавцов (только active)
     async getPublicSellers(req, res) {
         try {
-            console.log('📦 getPublicSellers CALLED');
-            console.log('   req.params:', req.params);
-            console.log('   req.query:', req.query);
-            console.log('   req.user:', req.user);
-
             const { cityId } = req.params;
             const { category } = req.query;
 
-            // Передаём userId и userRole если есть токен
-            const userId = req.user?.id || null;
-            const userRole = req.user?.role || null;
+            const sellers = await sellerService.getPublicSellers(cityId, category);
 
-            console.log('   Extracted cityId:', cityId);
-            console.log('   Extracted category:', category);
-            console.log('   userId:', userId);
-            console.log('   userRole:', userRole);
-
-            const sellers = await sellerService.getPublicSellers(cityId, category, userId, userRole);
-
-            console.log('   Found sellers:', sellers.length);
             success(res, sellers, 'Продавцы получены');
         } catch (err) {
-            console.error('❌ getPublicSellers ERROR:', err.message);
             error(res, err.message, 500);
         }
     }
@@ -84,36 +68,23 @@ class SellerController {
         }
     }
 
-    // Получить продавца по ID + роь и  статус
+    // Получить продавца по ID
     async getSellerById(req, res) {
         try {
-            console.log('🔍 getSellerById CALLED');
-            console.log('   req.params:', req.params);
-            console.log('   req.user:', req.user);
-
             const { id } = req.params;
-
-            // Передаём userId и userRole (могут быть null для публичного доступа)
-            const userId = req.user?.id || null;
-            const userRole = req.user?.role || null;
-
-            console.log('   id:', id);
-            console.log('   userId:', userId);
-            console.log('   userRole:', userRole);
 
             const seller = await sellerService.getSellerById(
                 id,
-                userId,
-                userRole
+                req.user.id,
+                req.user.role
             );
 
-            console.log('   Found seller:', seller.name);
             success(res, seller, 'Продавец получен');
         } catch (err) {
-            console.error('❌ getSellerById ERROR:', err.message);
             error(res, err.message, err.message === 'Доступ запрещён' ? 403 : 404);
         }
     }
+
     // Создать продавца (после одобрения заявки)
     async createSeller(req, res) {
         try {
@@ -301,12 +272,26 @@ class SellerController {
     }
 
     // Активировать продавца (Owner/Admin)
+    // Активировать продавца (Owner/Admin)
     async activateSeller(req, res) {
         try {
             const { id } = req.params;
             const { months } = req.body;
 
             const seller = await sellerService.activateSeller(id, months);
+
+            success(res, seller, 'Продавец активирован');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
+    // Активировать продавца (Manager) - БЕЗ изменения дат
+    async activateSellerManager(req, res) {
+        try {
+            const { id } = req.params;
+
+            const seller = await sellerService.activateSellerManager(id, req.user.id);
 
             success(res, seller, 'Продавец активирован');
         } catch (err) {

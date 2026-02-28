@@ -46,34 +46,20 @@ class SellerService {
         return sellers;
     }
 
-    // Получить публичных продавцов
-    // Публично: только active
-    // Owner/Admin/Manager с токеном: все статусы
-    async getPublicSellers(cityId, globalCategoryId, userId = null, userRole = null) {
-        const queryObj = {};
-
-        // Если НЕТ токена (публичный доступ) - только active и не истёкшие
-        if (!userId || !userRole) {
-            queryObj.status = 'active';
-            queryObj.activationEndDate = { $gt: new Date() };
-        }
-        // Если ЕСТЬ токен - Owner/Admin видят всех, Manager своих
-        else {
-            if (userRole === 'manager') {
-                queryObj.createdBy = userId;
-            }
-            // Owner/Admin - без фильтра по createdBy (видят всех)
-        }
+    // Получить публичных продавцов (только active)
+    async getPublicSellers(cityId, globalCategoryId) {
+        const queryObj = {
+            status: 'active',
+            activationEndDate: { $gt: new Date() } // Не истёкшие
+        };
 
         if (cityId) queryObj.city = cityId;
         if (globalCategoryId) queryObj.globalCategories = globalCategoryId;
 
-        console.log('🔍 getPublicSellers queryObj:', JSON.stringify(queryObj, null, 2));
-
         const sellers = await Seller.find(queryObj)
             .populate('city', 'name slug')
             .populate('globalCategories', 'name slug')
-            .select('name slug logo coverImage averageRating totalRatings address city globalCategories status')
+            .select('name slug logo coverImage averageRating totalRatings address city globalCategories')
             .sort({ averageRating: -1, totalRatings: -1 });
 
         return sellers;
@@ -137,9 +123,8 @@ class SellerService {
         throw new Error('Доступ запрещён');
     }
 
-
-    // Получить продавца по ID (с учётом роли и статуса)
-    async getSellerById(sellerId, userId = null, userRole = null) {
+    // Получить продавца по ID
+    async getSellerById(sellerId, userId, userRole) {
         const seller = await Seller.findById(sellerId)
             .populate('city', 'name slug')
             .populate('globalCategories', 'name slug')
@@ -149,36 +134,12 @@ class SellerService {
             throw new Error('Продавец не найден');
         }
 
-        // Если НЕТ токена (публичный доступ) - только active
-        if (!userId || !userRole) {
-            if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
-                throw new Error('Продавец не найден или неактивен');
-            }
-            return seller;
+        // Проверка прав (Manager может только своих)
+        if (userRole === 'manager' && seller.createdBy._id.toString() !== userId.toString()) {
+            throw new Error('Доступ запрещён');
         }
 
-        // Owner/Admin видят всех
-        if (userRole === 'owner' || userRole === 'admin') {
-            return seller;
-        }
-
-        // Manager видит СВОИХ (любой статус) + ЧУЖИХ (только active)
-        if (userRole === 'manager') {
-            const isOwner = seller.createdBy._id.toString() === userId.toString();
-
-            if (isOwner) {
-                // Свой продавец - любой статус
-                return seller;
-            } else {
-                // Чужой продавец - только active
-                if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
-                    throw new Error('Доступ запрещён');
-                }
-                return seller;
-            }
-        }
-
-        throw new Error('Доступ запрещён');
+        return seller;
     }
 
     // Создать продавца (после одобрения заявки)
@@ -466,6 +427,28 @@ class SellerService {
     }
 
     // Активировать продавца (Owner/Admin)
+    // Активировать продавца (Manager) - БЕЗ изменения дат
+    async activateSellerManager(sellerId, userId) {
+        const seller = await Seller.findById(sellerId)
+            .populate('createdBy', '_id');
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // Проверка владения
+        if (seller.createdBy._id.toString() !== userId.toString()) {
+            throw new Error('Доступ запрещён');
+        }
+
+        // Просто меняем статус на active, даты НЕ трогаем!
+        seller.status = 'active';
+        await seller.save();
+
+        return seller;
+    }
+
+    // Активировать продавца (Owner/Admin)
     async activateSeller(sellerId, months) {
         const seller = await Seller.findById(sellerId)
             .populate('createdBy', 'email name');
@@ -475,6 +458,16 @@ class SellerService {
         }
 
         const now = new Date();
+
+        // ЛОГИКА: Если draft И срок НЕ истёк → НЕ меняем даты (Manager перевёл в draft)
+        if (seller.status === 'draft' && seller.activationEndDate && seller.activationEndDate > now) {
+            seller.status = 'active';
+            // activationStartDate и activationEndDate НЕ трогаем!
+            await seller.save();
+            return seller;
+        }
+
+        // ЛОГИКА: Если draft БЕЗ дат ИЛИ expired/inactive → устанавливаем НОВЫЕ даты
         const endDate = new Date();
         endDate.setMonth(endDate.getMonth() + months);
 
@@ -537,6 +530,7 @@ class SellerService {
     }
 
     // Перевести в draft
+    // Перевести в draft
     async moveToDraft(sellerId, userId, userRole) {
         const seller = await Seller.findById(sellerId);
 
@@ -550,8 +544,9 @@ class SellerService {
         }
 
         seller.status = 'draft';
-        seller.activationStartDate = null;
-        seller.activationEndDate = null;
+        // ВАЖНО: Даты НЕ удаляем! Они сохраняются для возможности повторной активации без изменения дат
+        // seller.activationStartDate = null;  ← УДАЛЕНО
+        // seller.activationEndDate = null;    ← УДАЛЕНО
         await seller.save();
 
         return seller;

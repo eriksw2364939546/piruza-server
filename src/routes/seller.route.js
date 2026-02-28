@@ -3,6 +3,7 @@ import sellerController from '../controllers/seller.controller.js';
 import authMiddleware from '../middlewares/auth.middleware.js';
 import permissionsMiddleware from '../middlewares/permissions.middleware.js';
 import checkImageMiddleware from '../middlewares/checkimage.middleware.js';
+import statusValidationMiddleware from '../middlewares/statusvalidation.middleware.js';
 import validationMiddleware from '../middlewares/validation.middleware.js';
 import sellerValidator from '../validators/seller.validator.js';
 import uploadPhoto from '../utils/imageupload.util.js';
@@ -176,13 +177,23 @@ router.delete(
 
 // ========== УПРАВЛЕНИЕ СТАТУСАМИ (Owner/Admin) ==========
 
-// POST /api/sellers/:id/activate - Активировать продавца
+// POST /api/sellers/:id/activate - Активировать продавца (Owner/Admin - с датами)
 router.post(
     '/:id/activate',
     authMiddleware.protectAdmin,
     permissionsMiddleware.adminAccess,
+    statusValidationMiddleware.checkCanActivate, // НОВОЕ: Проверка статуса ПЕРЕД активацией
     validationMiddleware.validate(sellerValidator.activateSellerSchema),
     sellerController.activateSeller
+);
+
+// POST /api/sellers/:id/activate-manager - Активировать продавца (Manager - БЕЗ изменения дат)
+router.post(
+    '/:id/activate-manager',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.managerAccess,
+    statusValidationMiddleware.checkCanActivateManager, // Проверка для Manager
+    sellerController.activateSellerManager
 );
 
 // POST /api/sellers/:id/extend - Продлить продавца
@@ -190,6 +201,7 @@ router.post(
     '/:id/extend',
     authMiddleware.protectAdmin,
     permissionsMiddleware.adminAccess,
+    statusValidationMiddleware.checkCanExtend, // НОВОЕ: Проверка статуса ПЕРЕД продлением
     validationMiddleware.validate(sellerValidator.activateSellerSchema),
     sellerController.extendSeller
 );
@@ -199,6 +211,7 @@ router.post(
     '/:id/deactivate',
     authMiddleware.protectAdmin,
     permissionsMiddleware.adminAccess,
+    statusValidationMiddleware.checkCanDeactivate, // НОВОЕ: Проверка статуса ПЕРЕД деактивацией
     sellerController.deactivateSeller
 );
 
@@ -208,6 +221,7 @@ router.post(
     authMiddleware.protectAdmin,
     permissionsMiddleware.managerAccess,
     permissionsMiddleware.checkSellerOwnership,
+    statusValidationMiddleware.checkCanMoveToDraft, // НОВОЕ: Проверка статуса
     sellerController.moveToDraft
 );
 
