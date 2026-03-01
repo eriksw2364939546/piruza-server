@@ -46,23 +46,71 @@ class SellerService {
         return sellers;
     }
 
-    // Получить публичных продавцов (только active)
-    async getPublicSellers(cityId, globalCategoryId) {
-        const queryObj = {
-            status: 'active',
-            activationEndDate: { $gt: new Date() } // Не истёкшие
-        };
+    // Получить публичных продавцов
+    // Публично: только active + isActive города/категорий
+    // Owner/Admin/Manager с токеном: по логике ролей
+    async getPublicSellers(cityId, globalCategoryId, userId = null, userRole = null) {
+        // НОВОЕ: Проверяем существование и активность города
+        if (cityId) {
+            const cityDoc = await City.findById(cityId);
+
+            if (!cityDoc) {
+                throw new Error('Такого города нет');
+            }
+
+            // Если город неактивен И пользователь НЕ Owner → ошибка
+            if (!cityDoc.isActive && userRole !== 'owner') {
+                throw new Error('Такого города нет');
+            }
+        }
+
+        const queryObj = {};
+
+        // Логика по ролям
+        if (!userId || !userRole) {
+            // Публичный доступ - только active и не истёкшие
+            queryObj.status = 'active';
+            queryObj.activationEndDate = { $gt: new Date() };
+        } else if (userRole === 'manager') {
+            // Manager - только свои
+            queryObj.createdBy = userId;
+        }
+        // Owner/Admin - без фильтра по createdBy (видят всех)
 
         if (cityId) queryObj.city = cityId;
         if (globalCategoryId) queryObj.globalCategories = globalCategoryId;
 
+        console.log('🔍 getPublicSellers queryObj:', JSON.stringify(queryObj, null, 2));
+
         const sellers = await Seller.find(queryObj)
-            .populate('city', 'name slug')
-            .populate('globalCategories', 'name slug')
-            .select('name slug logo coverImage averageRating totalRatings address city globalCategories')
+            .populate('city', 'name slug isActive')
+            .populate('globalCategories', 'name slug isActive')
+            .select('name slug logo coverImage averageRating totalRatings address city globalCategories status')
             .sort({ averageRating: -1, totalRatings: -1 });
 
-        return sellers;
+        // НОВОЕ: Фильтруем по isActive города и категорий (кроме Owner)
+        let filteredSellers = sellers;
+
+        if (userRole !== 'owner') {
+            filteredSellers = sellers.filter(seller => {
+                // Проверяем активность города
+                if (!seller.city || !seller.city.isActive) {
+                    return false;
+                }
+
+                // Проверяем активность всех глобальных категорий
+                if (seller.globalCategories && seller.globalCategories.length > 0) {
+                    const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
+                    if (hasInactiveCategory) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+        }
+
+        return filteredSellers;
     }
 
     // Получить продавца по slug

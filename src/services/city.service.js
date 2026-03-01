@@ -98,6 +98,30 @@ class CityService {
 
         if (isActive !== undefined) {
             updateData.isActive = isActive;
+
+            // НОВОЕ: Если город деактивируется (isActive: false)
+            // → переводим ВСЕ продавцы этого города в draft
+            if (isActive === false) {
+                const { Seller } = await import('../models/index.js');
+
+                const result = await Seller.updateMany(
+                    {
+                        city: cityId,
+                        status: { $in: ['active', 'expired', 'inactive'] } // Только не-draft продавцы
+                    },
+                    {
+                        $set: { status: 'draft' }
+                    }
+                );
+
+                console.log(`🔴 Город деактивирован. Переведено в draft: ${result.modifiedCount} продавцов`);
+            }
+
+            // НОВОЕ: Если город активируется (isActive: true)
+            // → продавцы остаются в draft, Owner/Admin должны вручную активировать
+            if (isActive === true) {
+                console.log(`🟢 Город активирован. Продавцы остаются в draft`);
+            }
         }
 
         const city = await City.findByIdAndUpdate(

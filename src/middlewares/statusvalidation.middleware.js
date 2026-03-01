@@ -77,7 +77,9 @@ class StatusValidationMiddleware {
         try {
             const { id } = req.params;
 
-            const seller = await Seller.findById(id);
+            const seller = await Seller.findById(id)
+                .populate('city', 'name isActive')
+                .populate('globalCategories', 'name isActive');
 
             if (!seller) {
                 return res.status(404).json({
@@ -100,6 +102,34 @@ class StatusValidationMiddleware {
                     success: false,
                     message: `Невозможно активировать продавца со статусом "${seller.status}"`
                 });
+            }
+
+            // НОВОЕ: Проверка активности города
+            if (!seller.city) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Город продавца не найден'
+                });
+            }
+
+            if (!seller.city.isActive) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Невозможно активировать продавца. Город "${seller.city.name}" не активен. Сначала активируйте город`
+                });
+            }
+
+            // НОВОЕ: Проверка активности глобальных категорий
+            if (seller.globalCategories && seller.globalCategories.length > 0) {
+                const inactiveCategories = seller.globalCategories.filter(cat => !cat.isActive);
+
+                if (inactiveCategories.length > 0) {
+                    const names = inactiveCategories.map(c => c.name).join(', ');
+                    return res.status(400).json({
+                        success: false,
+                        message: `Невозможно активировать продавца. Глобальные категории не активны: ${names}. Сначала активируйте категории`
+                    });
+                }
             }
 
             next();

@@ -53,7 +53,39 @@ class CategoryService {
     }
 
     // Получить категории продавца
-    async getSellerCategories(sellerId) {
+    // Получить категории продавца
+    // Публично: только если продавец active
+    // Owner/Admin: все
+    // Manager: свои (любой статус)
+    async getSellerCategories(sellerId, userId = null, userRole = null) {
+        // Проверяем продавца
+        const seller = await Seller.findById(sellerId).populate('createdBy', '_id');
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // Если НЕТ токена (публичный доступ) - только active продавцы
+        if (!userId || !userRole) {
+            if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
+                throw new Error('Продавец не найден или неактивен');
+            }
+        }
+        // Owner/Admin видят всех
+        else if (userRole !== 'owner' && userRole !== 'admin') {
+            // Manager видит только своих
+            if (userRole === 'manager') {
+                const isOwner = seller.createdBy._id.toString() === userId.toString();
+
+                if (!isOwner) {
+                    // Чужой продавец - только active
+                    if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
+                        throw new Error('Доступ запрещён');
+                    }
+                }
+            }
+        }
+
         const categories = await Category.find({
             seller: sellerId,
             isGlobal: false
@@ -65,7 +97,38 @@ class CategoryService {
     }
 
     // Получить категорию продавца по slug
-    async getSellerCategoryBySlug(sellerId, slug) {
+    // Публично: только если продавец active
+    // Owner/Admin: все
+    // Manager: свои (любой статус)
+    async getSellerCategoryBySlug(sellerId, slug, userId = null, userRole = null) {
+        // Проверяем продавца
+        const seller = await Seller.findById(sellerId).populate('createdBy', '_id');
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // Если НЕТ токена (публичный доступ) - только active продавцы
+        if (!userId || !userRole) {
+            if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
+                throw new Error('Продавец не найден или неактивен');
+            }
+        }
+        // Owner/Admin видят всех
+        else if (userRole !== 'owner' && userRole !== 'admin') {
+            // Manager видит только своих
+            if (userRole === 'manager') {
+                const isOwner = seller.createdBy._id.toString() === userId.toString();
+
+                if (!isOwner) {
+                    // Чужой продавец - только active
+                    if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
+                        throw new Error('Доступ запрещён');
+                    }
+                }
+            }
+        }
+
         const category = await Category.findOne({
             seller: sellerId,
             slug,
@@ -117,20 +180,28 @@ class CategoryService {
             throw new Error('Продавец не найден. Локальная категория не может существовать без продавца');
         }
 
+        // НОВОЕ: Проверка статуса продавца - можно создавать/редактировать ТОЛЬКО у draft
+        if (sellerDoc.status !== 'draft') {
+            throw new Error(`Невозможно создать категорию. Продавец должен быть в статусе draft. Текущий статус: ${sellerDoc.status}`);
+        }
+
         // Генерируем slug
         const baseSlug = generateSlug(name);
 
-        // Проверяем уникальность внутри продавца
-        let slug = baseSlug;
-        let counter = 1;
-        while (await Category.findOne({ slug, seller, isGlobal: false })) {
-            slug = `${baseSlug}-${counter}`;
-            counter++;
+        // НОВОЕ: Проверяем уникальность БЕЗ автодобавления -1
+        const existingCategory = await Category.findOne({
+            slug: baseSlug,
+            seller,
+            isGlobal: false
+        });
+
+        if (existingCategory) {
+            throw new Error(`Категория с названием "${name}" уже существует у этого продавца`);
         }
 
         const category = new Category({
             name,
-            slug,
+            slug: baseSlug,
             description,
             isGlobal: false,
             isActive: true, // Локальные категории сразу активны
@@ -163,7 +234,16 @@ class CategoryService {
 
         // Если локальная категория
         if (!category.isGlobal) {
-            // Owner/Admin могут обновлять любые локальные
+            // НОВОЕ: Проверка статуса продавца - редактировать можно ТОЛЬКО draft (для ВСЕХ ролей)
+            if (category.seller) {
+                const sellerDoc = await Seller.findById(category.seller);
+
+                if (sellerDoc && sellerDoc.status !== 'draft') {
+                    throw new Error(`Невозможно обновить категорию. Продавец должен быть в статусе draft для редактирования. Текущий статус: ${sellerDoc.status}. Сначала переведите продавца в draft`);
+                }
+            }
+
+            // Owner/Admin могут обновлять любые локальные (но только у draft продавцов)
             if (userRole !== 'owner' && userRole !== 'admin') {
                 // Manager может обновлять только свои локальные
                 if (userRole === 'manager') {
@@ -185,35 +265,36 @@ class CategoryService {
         if (name) {
             const baseSlug = generateSlug(name);
 
-            // Проверяем уникальность
-            let slug = baseSlug;
-            let counter = 1;
-
             if (category.isGlobal) {
-                // Для глобальных
-                while (await Category.findOne({
-                    slug,
+                // Для глобальных - проверяем уникальность БЕЗ автодобавления
+                const existing = await Category.findOne({
+                    slug: baseSlug,
                     isGlobal: true,
                     _id: { $ne: categoryId }
-                })) {
-                    slug = `${baseSlug}-${counter}`;
-                    counter++;
+                });
+
+                if (existing) {
+                    throw new Error(`Глобальная категория с названием "${name}" уже существует`);
                 }
+
+                category.slug = baseSlug;
             } else {
-                // Для локальных (внутри продавца)
-                while (await Category.findOne({
-                    slug,
+                // Для локальных - проверяем уникальность внутри продавца БЕЗ автодобавления
+                const existing = await Category.findOne({
+                    slug: baseSlug,
                     seller: category.seller,
                     isGlobal: false,
                     _id: { $ne: categoryId }
-                })) {
-                    slug = `${baseSlug}-${counter}`;
-                    counter++;
+                });
+
+                if (existing) {
+                    throw new Error(`Категория с названием "${name}" уже существует у этого продавца`);
                 }
+
+                category.slug = baseSlug;
             }
 
             category.name = name;
-            category.slug = slug;
         }
 
         // Обновляем описание если передано
@@ -226,6 +307,31 @@ class CategoryService {
             if (category.isGlobal && userRole !== 'owner') {
                 throw new Error('Только Owner может изменять статус глобальных категорий');
             }
+
+            // НОВОЕ: Если ГЛОБАЛЬНАЯ категория деактивируется
+            // → переводим ВСЕ продавцы с этой категорией (ВО ВСЕХ ГОРОДАХ) в draft
+            if (category.isGlobal && isActive === false) {
+                const { Seller } = await import('../models/index.js');
+
+                const result = await Seller.updateMany(
+                    {
+                        globalCategories: categoryId,
+                        status: { $in: ['active', 'expired', 'inactive'] }
+                    },
+                    {
+                        $set: { status: 'draft' }
+                    }
+                );
+
+                console.log(`🔴 Глобальная категория "${category.name}" деактивирована. Переведено в draft: ${result.modifiedCount} продавцов (во всех городах)`);
+            }
+
+            // НОВОЕ: Если ГЛОБАЛЬНАЯ категория активируется
+            // → продавцы остаются в draft, Owner/Admin должны вручную активировать
+            if (category.isGlobal && isActive === true) {
+                console.log(`🟢 Глобальная категория "${category.name}" активирована. Продавцы остаются в draft`);
+            }
+
             category.isActive = isActive;
         }
 
@@ -249,7 +355,16 @@ class CategoryService {
 
         // Если локальная категория
         if (!category.isGlobal) {
-            // Owner/Admin могут удалять любые локальные
+            // НОВОЕ: Проверка статуса продавца - удалять можно ТОЛЬКО у draft (для ВСЕХ ролей)
+            if (category.seller) {
+                const sellerDoc = await Seller.findById(category.seller);
+
+                if (sellerDoc && sellerDoc.status !== 'draft') {
+                    throw new Error(`Невозможно удалить категорию. Продавец должен быть в статусе draft. Текущий статус: ${sellerDoc.status}. Сначала переведите продавца в draft`);
+                }
+            }
+
+            // Owner/Admin могут удалять любые локальные (но только у draft продавцов)
             if (userRole === 'owner' || userRole === 'admin') {
                 await Category.findByIdAndDelete(categoryId);
                 return category;
@@ -266,11 +381,6 @@ class CategoryService {
                 // Проверка владения продавцом
                 if (seller.createdBy.toString() !== userId.toString()) {
                     throw new Error('Доступ запрещён. Вы можете удалять только категории своих продавцов');
-                }
-
-                // Проверка статуса продавца
-                if (seller.status !== 'active') {
-                    throw new Error('Продавец должен быть одобрен Owner/Admin для управления категориями');
                 }
 
                 await Category.findByIdAndDelete(categoryId);

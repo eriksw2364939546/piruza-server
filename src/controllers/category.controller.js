@@ -44,11 +44,16 @@ class CategoryController {
         try {
             const { sellerId } = req.params;
 
-            const categories = await categoryService.getSellerCategories(sellerId);
+            // Передаём userId и userRole если есть токен
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
+
+            const categories = await categoryService.getSellerCategories(sellerId, userId, userRole);
 
             success(res, categories, 'Категории продавца получены');
         } catch (err) {
-            error(res, err.message, 500);
+            const statusCode = err.message.includes('не найден') ? 404 : 403;
+            error(res, err.message, statusCode);
         }
     }
 
@@ -57,11 +62,16 @@ class CategoryController {
         try {
             const { sellerId, slug } = req.params;
 
-            const category = await categoryService.getSellerCategoryBySlug(sellerId, slug);
+            // Передаём userId и userRole если есть токен
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
 
-            success(res, category, 'Категория получена');
+            const category = await categoryService.getSellerCategoryBySlug(sellerId, slug, userId, userRole);
+
+            success(res, category, 'Категория продавца получена');
         } catch (err) {
-            error(res, err.message, 404);
+            const statusCode = err.message.includes('не найден') ? 404 : 403;
+            error(res, err.message, statusCode);
         }
     }
 

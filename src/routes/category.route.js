@@ -49,14 +49,20 @@ router.post(
 // ========== ЛОКАЛЬНЫЕ КАТЕГОРИИ ПРОДАВЦА ==========
 
 // GET /api/categories/seller/:sellerId - Получить категории продавца
+// Публично: только если продавец active
+// С токеном: Owner/Admin все, Manager свои
 router.get(
     '/seller/:sellerId',
+    authMiddleware.optionalAuth,
     categoryController.getSellerCategories
 );
 
 // GET /api/categories/seller/:sellerId/slug/:slug - Получить категорию продавца по slug
+// Публично: только если продавец active
+// С токеном: Owner/Admin все, Manager свои
 router.get(
     '/seller/:sellerId/slug/:slug',
+    authMiddleware.optionalAuth,
     categoryController.getSellerCategoryBySlug
 );
 

@@ -43,11 +43,20 @@ class SellerController {
             const { cityId } = req.params;
             const { category } = req.query;
 
-            const sellers = await sellerService.getPublicSellers(cityId, category);
+            // Передаём userId и userRole если есть токен
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
 
-            success(res, sellers, 'Продавцы получены');
+            const sellers = await sellerService.getPublicSellers(cityId, category, userId, userRole);
+
+            // НОВОЕ: Если массив пустой → сообщение "0 продавцов"
+            const message = sellers.length === 0 ? '0 продавцов' : 'Продавцы получены';
+
+            success(res, sellers, message);
         } catch (err) {
-            error(res, err.message, 500);
+            // Если ошибка "Такого города нет" → 404
+            const statusCode = err.message === 'Такого города нет' ? 404 : 500;
+            error(res, err.message, statusCode);
         }
     }
 
