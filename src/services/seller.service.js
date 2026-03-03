@@ -637,16 +637,75 @@ class SellerService {
             }
         }
 
-        // ВАЖНО: Удаляем все локальные категории продавца
-        await Category.deleteMany({
+        console.log(`🗑️  Начинаю полное удаление продавца ${seller.name}`);
+
+        // 1. УДАЛЕНИЕ ТОВАРОВ И ИХ ИЗОБРАЖЕНИЙ
+        const products = await Product.find({ seller: sellerId });
+
+        if (products.length > 0) {
+            const fs = await import('fs/promises');
+            const path = await import('path');
+
+            // Удаляем изображения товаров с диска
+            for (const product of products) {
+                if (product.image) {
+                    const imagePath = path.join(process.cwd(), 'public', product.image);
+
+                    try {
+                        await fs.unlink(imagePath);
+                        console.log(`  ✅ Удалено изображение товара: ${product.image}`);
+                    } catch (err) {
+                        console.log(`  ⚠️  Не удалось удалить изображение товара: ${product.image}`);
+                    }
+                }
+            }
+
+            // Удаляем товары из БД
+            await Product.deleteMany({ seller: sellerId });
+            console.log(`  ✅ Удалено товаров из БД: ${products.length}`);
+        }
+
+        // 2. УДАЛЕНИЕ ЛОКАЛЬНЫХ КАТЕГОРИЙ
+        const categoriesResult = await Category.deleteMany({
             seller: sellerId,
             isGlobal: false
         });
 
-        console.log(`✅ Удалены локальные категории продавца ${seller.name}`);
+        if (categoriesResult.deletedCount > 0) {
+            console.log(`  ✅ Удалено локальных категорий: ${categoriesResult.deletedCount}`);
+        }
 
-        // Удаляем продавца
+        // 3. УДАЛЕНИЕ LOGO С ДИСКА
+        if (seller.logo) {
+            const fs = await import('fs/promises');
+            const path = await import('path');
+            const logoPath = path.join(process.cwd(), 'public', seller.logo);
+
+            try {
+                await fs.unlink(logoPath);
+                console.log(`  ✅ Удалён logo: ${seller.logo}`);
+            } catch (err) {
+                console.log(`  ⚠️  Не удалось удалить logo: ${seller.logo}`);
+            }
+        }
+
+        // 4. УДАЛЕНИЕ COVER С ДИСКА
+        if (seller.coverImage) {
+            const fs = await import('fs/promises');
+            const path = await import('path');
+            const coverPath = path.join(process.cwd(), 'public', seller.coverImage);
+
+            try {
+                await fs.unlink(coverPath);
+                console.log(`  ✅ Удалён cover: ${seller.coverImage}`);
+            } catch (err) {
+                console.log(`  ⚠️  Не удалось удалить cover: ${seller.coverImage}`);
+            }
+        }
+
+        // 5. УДАЛЕНИЕ ПРОДАВЦА ИЗ БД
         await Seller.findByIdAndDelete(sellerId);
+        console.log(`✅ Продавец ${seller.name} полностью удалён`);
 
         return seller;
     }

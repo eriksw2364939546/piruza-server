@@ -2,7 +2,7 @@ import ratingService from '../services/rating.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
 
 class RatingController {
-    // Оценить продавца
+    // Оценить продавца (создать или обновить)
     async rateSeller(req, res) {
         try {
             const { sellerId } = req.params;
@@ -20,7 +20,7 @@ class RatingController {
         }
     }
 
-    // Получить рейтинг продавца
+    // Получить рейтинг продавца (публичный)
     async getSellerRating(req, res) {
         try {
             const { sellerId } = req.params;
@@ -28,6 +28,79 @@ class RatingController {
             const rating = await ratingService.getSellerRating(sellerId);
 
             success(res, rating, 'Рейтинг получен');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // НОВОЕ: Получить все оценки продавца с деталями клиентов (публичный)
+    async getSellerRatings(req, res) {
+        try {
+            const { sellerId } = req.params;
+
+            const ratings = await ratingService.getSellerRatings(sellerId);
+
+            success(res, ratings, 'Оценки продавца получены');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // НОВОЕ: Получить статистику оценок продавца (публичный)
+    async getSellerRatingStats(req, res) {
+        try {
+            const { sellerId } = req.params;
+
+            const stats = await ratingService.getSellerRatingStats(sellerId);
+
+            success(res, stats, 'Статистика получена');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // НОВОЕ: Получить свою оценку для продавца (клиент)
+    async getMyRating(req, res) {
+        try {
+            const { sellerId } = req.params;
+
+            const rating = await ratingService.getClientRatingForSeller(
+                sellerId,
+                req.client.id
+            );
+
+            if (!rating) {
+                return success(res, null, 'Вы ещё не оценили этого продавца');
+            }
+
+            success(res, rating, 'Ваша оценка получена');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // НОВОЕ: Получить историю оценок клиента (клиент)
+    async getMyRatings(req, res) {
+        try {
+            const ratings = await ratingService.getClientRatings(req.client.id);
+
+            success(res, ratings, 'История оценок получена');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // НОВОЕ: Удалить свою оценку (клиент)
+    async deleteMyRating(req, res) {
+        try {
+            const { sellerId } = req.params;
+
+            const rating = await ratingService.deleteRating(
+                sellerId,
+                req.client.id
+            );
+
+            success(res, rating, 'Оценка удалена');
         } catch (err) {
             error(res, err.message, 404);
         }

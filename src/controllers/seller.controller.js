@@ -280,7 +280,7 @@ class SellerController {
         }
     }
 
-    // Активировать продавца (Owner/Admin)
+
     // Активировать продавца (Owner/Admin)
     async activateSeller(req, res) {
         try {
@@ -364,11 +364,12 @@ class SellerController {
                 req.user.role
             );
 
-            success(res, seller, 'Продавец и его локальные категории удалены');
+            success(res, seller, 'Продавец полностью удалён (товары, категории, изображения)');
         } catch (err) {
             error(res, err.message, err.message === 'Доступ запрещён' ? 403 : 400);
         }
     }
+
 }
 
 export default new SellerController();

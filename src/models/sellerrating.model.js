@@ -1,3 +1,4 @@
+//sellerrating.model.js
 import mongoose from 'mongoose';
 
 const sellerRatingSchema = new mongoose.Schema({
