@@ -285,7 +285,8 @@ class SellerController {
     async activateSeller(req, res) {
         try {
             const { id } = req.params;
-            const { months } = req.body;
+            // ИСПРАВЛЕНО: явно передаём undefined если months нет
+            const months = req.body.months !== undefined ? req.body.months : undefined;
 
             const seller = await sellerService.activateSeller(id, months);
 

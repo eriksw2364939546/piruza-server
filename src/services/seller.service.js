@@ -507,15 +507,19 @@ class SellerService {
 
         const now = new Date();
 
-        // ЛОГИКА: Если draft И срок НЕ истёк → НЕ меняем даты (Manager перевёл в draft)
+        // ЛОГИКА: Если draft И срок НЕ истёк → НЕ меняем даты
         if (seller.status === 'draft' && seller.activationEndDate && seller.activationEndDate > now) {
             seller.status = 'active';
-            // activationStartDate и activationEndDate НЕ трогаем!
             await seller.save();
             return seller;
         }
 
-        // ЛОГИКА: Если draft БЕЗ дат ИЛИ expired/inactive → устанавливаем НОВЫЕ даты
+        // НОВОЕ: Проверка months
+        if (!months || months === undefined) {
+            throw new Error('Количество месяцев обязательно для активации');
+        }
+
+        // ЛОГИКА: Устанавливаем НОВЫЕ даты
         const endDate = new Date();
         endDate.setMonth(endDate.getMonth() + months);
 
@@ -525,7 +529,7 @@ class SellerService {
 
         await seller.save();
 
-        // Отправляем email Manager'у
+        // Отправляем email
         if (seller.createdBy && seller.createdBy.email) {
             await sendActivationEmail(seller.createdBy.email, seller.name, endDate);
         }

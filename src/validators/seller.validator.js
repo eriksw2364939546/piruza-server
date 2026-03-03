@@ -123,14 +123,15 @@ class SellerValidator {
     });
 
     // Схема для активации продавца
+    // Схема для активации продавца
+    // months опционален, т.к. Owner может активировать draft в сроке БЕЗ изменения дат
     activateSellerSchema = Joi.object({
         months: Joi.number()
             .integer()
             .min(1)
-            .required()
+            .optional()
             .messages({
-                'number.min': 'Минимальный срок активации - 1 месяц',
-                'any.required': 'Количество месяцев обязательно'
+                'number.min': 'Минимальный срок активации - 1 месяц'
             })
     });
 

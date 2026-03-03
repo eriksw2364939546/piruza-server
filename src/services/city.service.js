@@ -145,7 +145,33 @@ class CityService {
             throw new Error('Город не найден');
         }
 
-        city.isActive = !city.isActive;
+        const newStatus = !city.isActive;
+        city.isActive = newStatus;
+
+        // НОВОЕ: Если город деактивируется (isActive: false)
+        // → переводим ВСЕ продавцы этого города в draft
+        if (newStatus === false) {
+            const { Seller } = await import('../models/index.js');
+
+            const result = await Seller.updateMany(
+                {
+                    city: cityId,
+                    status: { $in: ['active', 'expired', 'inactive'] }
+                },
+                {
+                    $set: { status: 'draft' }
+                }
+            );
+
+            console.log(`🔴 Город деактивирован (toggle). Переведено в draft: ${result.modifiedCount} продавцов`);
+        }
+
+        // НОВОЕ: Если город активируется (isActive: true)
+        // → продавцы остаются в draft, Owner/Admin должны вручную активировать
+        if (newStatus === true) {
+            console.log(`🟢 Город активирован (toggle). Продавцы остаются в draft`);
+        }
+
         await city.save();
 
         return city;
