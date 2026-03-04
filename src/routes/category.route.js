@@ -50,7 +50,7 @@ router.post(
 
 // GET /api/categories/seller/:sellerId - Получить категории продавца
 // Публично: только если продавец active
-// С токеном: Owner/Admin все, Manager свои
+// С токеном: Owner/Admin/Manager по правам
 router.get(
     '/seller/:sellerId',
     authMiddleware.optionalAuth,

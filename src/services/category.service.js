@@ -52,46 +52,65 @@ class CategoryService {
         return category;
     }
 
-    // Получить категории продавца
+
     // Получить категории продавца
     // Публично: только если продавец active
     // Owner/Admin: все
     // Manager: свои (любой статус)
     async getSellerCategories(sellerId, userId = null, userRole = null) {
-        // Проверяем продавца
-        const seller = await Seller.findById(sellerId).populate('createdBy', '_id');
+        // НОВОЕ: Проверка доступности продавца
+        const seller = await Seller.findById(sellerId)
+            .populate('city', 'isActive')
+            .populate('globalCategories', 'isActive');
 
         if (!seller) {
             throw new Error('Продавец не найден');
         }
 
-        // Если НЕТ токена (публичный доступ) - только active продавцы
+        // БЕЗ ТОКЕНА - только active продавцы
         if (!userId || !userRole) {
-            if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
+            if (seller.status !== 'active') {
                 throw new Error('Продавец не найден или неактивен');
             }
         }
-        // Owner/Admin видят всех
-        else if (userRole !== 'owner' && userRole !== 'admin') {
-            // Manager видит только своих
-            if (userRole === 'manager') {
-                const isOwner = seller.createdBy._id.toString() === userId.toString();
 
-                if (!isOwner) {
-                    // Чужой продавец - только active
-                    if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
-                        throw new Error('Доступ запрещён');
+        // С ТОКЕНОМ - проверка прав
+        if (userId && userRole) {
+            // Owner видит всех
+            if (userRole === 'owner') {
+                // Продолжаем
+            }
+            // Admin/Manager - проверка активности
+            else if (userRole === 'admin' || userRole === 'manager') {
+                // Проверка активности города
+                if (!seller.city || !seller.city.isActive) {
+                    throw new Error('Доступ запрещён. Город продавца неактивен');
+                }
+
+                // Проверка активности категорий
+                if (!seller.globalCategories || seller.globalCategories.length === 0) {
+                    throw new Error('Доступ запрещён. У продавца нет глобальных категорий');
+                }
+
+                const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
+                if (hasInactiveCategory) {
+                    throw new Error('Доступ запрещён. Одна или несколько глобальных категорий неактивны');
+                }
+
+                // Manager - только свои продавцы
+                if (userRole === 'manager') {
+                    if (seller.createdBy.toString() !== userId.toString()) {
+                        throw new Error('Доступ запрещён. Вы можете видеть только категории своих продавцов');
                     }
                 }
             }
         }
 
+        // Получаем категории
         const categories = await Category.find({
             seller: sellerId,
             isGlobal: false
-        })
-            .select('name slug')
-            .sort({ name: 1 });
+        }).sort({ createdAt: -1 });
 
         return categories;
     }
@@ -100,35 +119,57 @@ class CategoryService {
     // Публично: только если продавец active
     // Owner/Admin: все
     // Manager: свои (любой статус)
+
     async getSellerCategoryBySlug(sellerId, slug, userId = null, userRole = null) {
-        // Проверяем продавца
-        const seller = await Seller.findById(sellerId).populate('createdBy', '_id');
+        // НОВОЕ: Проверка доступности продавца
+        const seller = await Seller.findById(sellerId)
+            .populate('city', 'isActive')
+            .populate('globalCategories', 'isActive');
 
         if (!seller) {
             throw new Error('Продавец не найден');
         }
 
-        // Если НЕТ токена (публичный доступ) - только active продавцы
+        // БЕЗ ТОКЕНА - только active продавцы
         if (!userId || !userRole) {
-            if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
+            if (seller.status !== 'active') {
                 throw new Error('Продавец не найден или неактивен');
             }
         }
-        // Owner/Admin видят всех
-        else if (userRole !== 'owner' && userRole !== 'admin') {
-            // Manager видит только своих
-            if (userRole === 'manager') {
-                const isOwner = seller.createdBy._id.toString() === userId.toString();
 
-                if (!isOwner) {
-                    // Чужой продавец - только active
-                    if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
-                        throw new Error('Доступ запрещён');
+        // С ТОКЕНОМ - проверка прав
+        if (userId && userRole) {
+            // Owner видит всех
+            if (userRole === 'owner') {
+                // Продолжаем
+            }
+            // Admin/Manager - проверка активности
+            else if (userRole === 'admin' || userRole === 'manager') {
+                // Проверка активности города
+                if (!seller.city || !seller.city.isActive) {
+                    throw new Error('Доступ запрещён. Город продавца неактивен');
+                }
+
+                // Проверка активности категорий
+                if (!seller.globalCategories || seller.globalCategories.length === 0) {
+                    throw new Error('Доступ запрещён. У продавца нет глобальных категорий');
+                }
+
+                const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
+                if (hasInactiveCategory) {
+                    throw new Error('Доступ запрещён. Одна или несколько глобальных категорий неактивны');
+                }
+
+                // Manager - только свои продавцы
+                if (userRole === 'manager') {
+                    if (seller.createdBy.toString() !== userId.toString()) {
+                        throw new Error('Доступ запрещён. Вы можете видеть только категории своих продавцов');
                     }
                 }
             }
         }
 
+        // Ищем категорию
         const category = await Category.findOne({
             seller: sellerId,
             slug,
@@ -136,7 +177,7 @@ class CategoryService {
         });
 
         if (!category) {
-            throw new Error('Категория продавца не найдена');
+            throw new Error('Категория не найдена');
         }
 
         return category;

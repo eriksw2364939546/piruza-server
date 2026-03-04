@@ -47,8 +47,8 @@ class PermissionsMiddleware {
         next();
     }
 
-    // Проверка владения продавцом (для Manager)
-    checkSellerOwnership = async (req, res, next) => {
+    // Проверка владения продавцом
+    async checkSellerOwnership(req, res, next) {
         try {
             const sellerId = req.params.id || req.params.sellerId;
 
@@ -59,13 +59,15 @@ class PermissionsMiddleware {
                 });
             }
 
-            // Owner и Admin могут редактировать всех
-            if (req.user.role === 'owner' || req.user.role === 'admin') {
+            // Owner проходит без проверок
+            if (req.user.role === 'owner') {
                 return next();
             }
 
-            // Manager может редактировать только своих
-            const seller = await Seller.findById(sellerId);
+            // НОВОЕ: Для Admin/Manager - загружаем с проверкой активности
+            const seller = await Seller.findById(sellerId)
+                .populate('city', 'name slug isActive')
+                .populate('globalCategories', 'name slug isActive');
 
             if (!seller) {
                 return res.status(404).json({
@@ -74,16 +76,43 @@ class PermissionsMiddleware {
                 });
             }
 
-            if (seller.createdBy.toString() !== req.user.id.toString()) {
+            // НОВОЕ: Проверка активности города для Admin/Manager
+            if (!seller.city || !seller.city.isActive) {
                 return res.status(403).json({
                     success: false,
-                    message: 'Доступ запрещён. Вы можете редактировать только своих продавцов'
+                    message: 'Доступ запрещён. Город продавца неактивен. Обратитесь к Owner'
                 });
+            }
+
+            // НОВОЕ: Проверка активности категорий для Admin/Manager
+            if (!seller.globalCategories || seller.globalCategories.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Доступ запрещён. У продавца нет глобальных категорий'
+                });
+            }
+
+            const inactiveCategories = seller.globalCategories.filter(cat => !cat.isActive);
+            if (inactiveCategories.length > 0) {
+                const names = inactiveCategories.map(c => c.name).join(', ');
+                return res.status(403).json({
+                    success: false,
+                    message: `Доступ запрещён. Неактивные категории: ${names}. Обратитесь к Owner`
+                });
+            }
+
+            // Проверка для Manager - только свои продавцы
+            if (req.user.role === 'manager') {
+                if (seller.createdBy.toString() !== req.user.id.toString()) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Доступ запрещён. Вы можете редактировать только своих продавцов'
+                    });
+                }
             }
 
             next();
         } catch (error) {
-            console.error('❌ Ошибка checkSellerOwnership:', error);
             return res.status(500).json({
                 success: false,
                 message: 'Ошибка проверки прав доступа'
@@ -92,7 +121,7 @@ class PermissionsMiddleware {
     }
 
     // Проверка доступа к локальным категориям продавца
-    checkSellerCategoryAccess = async (req, res, next) => {
+    async checkSellerCategoryAccess(req, res, next) {
         try {
             const sellerId = req.body.seller || req.params.sellerId;
 
@@ -103,124 +132,203 @@ class PermissionsMiddleware {
                 });
             }
 
-            // Проверяем существование продавца (для всех ролей)
-            const seller = await Seller.findById(sellerId);
+            // ВАЖНО: Owner проходит БЕЗ ПРОВЕРОК (ДО загрузки seller!)
+            if (req.user.role === 'owner') {
+                return next();
+            }
+
+            // Для Admin/Manager - загружаем и проверяем продавца
+            const seller = await Seller.findById(sellerId)
+                .populate('city', 'name slug isActive')
+                .populate('globalCategories', 'name slug isActive');
 
             if (!seller) {
                 return res.status(404).json({
                     success: false,
-                    message: 'Продавец не найден. Локальная категория не может существовать без продавца'
+                    message: 'Продавец не найден'
                 });
             }
 
-            // Owner и Admin могут управлять всеми локальными категориями
-            if (req.user.role === 'owner' || req.user.role === 'admin') {
-                return next();
+            // Проверка активности города
+            if (!seller.city || !seller.city.isActive) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Доступ запрещён. Город продавца неактивен. Обратитесь к Owner'
+                });
             }
 
-            // Manager может управлять только категориями СВОИХ продавцов
+            // Проверка активности категорий
+            if (!seller.globalCategories || seller.globalCategories.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Доступ запрещён. У продавца нет глобальных категорий'
+                });
+            }
+
+            const inactiveCategories = seller.globalCategories.filter(cat => !cat.isActive);
+            if (inactiveCategories.length > 0) {
+                const names = inactiveCategories.map(c => c.name).join(', ');
+                return res.status(403).json({
+                    success: false,
+                    message: `Доступ запрещён. Неактивные категории: ${names}. Обратитесь к Owner`
+                });
+            }
+
+            // Проверка для Manager - только свои продавцы
             if (req.user.role === 'manager') {
-                // Проверка владения продавцом
                 if (seller.createdBy.toString() !== req.user.id.toString()) {
                     return res.status(403).json({
                         success: false,
-                        message: 'Доступ запрещён. Вы можете управлять только категориями своих продавцов'
+                        message: 'Доступ запрещён. Вы можете работать только со своими продавцами'
                     });
                 }
-
-                return next();
             }
 
-            // Если роль не определена
-            return res.status(403).json({
-                success: false,
-                message: 'Доступ запрещён'
-            });
+            next();
         } catch (error) {
-            console.error('❌ Ошибка checkSellerCategoryAccess:', error);
+            console.error('checkSellerCategoryAccess error:', error);
             return res.status(500).json({
                 success: false,
-                message: 'Ошибка проверки прав доступа к категориям'
+                message: 'Ошибка проверки прав доступа'
             });
         }
     }
 
-    // Проверка доступа к товарам продавца (для Manager)
-    checkProductAccess = async (req, res, next) => {
+    // Проверка доступа к товарам продавца
+    async checkProductAccess(req, res, next) {
         try {
-            console.log('🔍 checkProductAccess вызван');
-            console.log('   req.user.role:', req.user.role);
-            console.log('   req.params:', req.params);
-            console.log('   req.body:', req.body);
+            let sellerId;
 
-            // Owner и Admin могут управлять всеми товарами
-            if (req.user.role === 'owner' || req.user.role === 'admin') {
-                console.log('✅ Owner/Admin - доступ разрешён');
-                return next();
-            }
+            console.log('🔍 checkProductAccess START');
+            console.log('  Method:', req.method);
+            console.log('  URL:', req.url);
+            console.log('  Params:', req.params);
+            console.log('  Body:', req.body);
 
-            // Manager может управлять только товарами СВОИХ продавцов
-            if (req.user.role === 'manager') {
-                let sellerId = (req.body && req.body.seller) || req.params.sellerId;
-                console.log('   sellerId из body/params:', sellerId);
+            // ИСПРАВЛЕНО: Если создание товара (POST на /products БЕЗ :id)
+            if (req.method === 'POST' && !req.params.id) {
+                sellerId = req.body.seller;
+                console.log('  POST request (create) - sellerId from body:', sellerId);
+            } else {
+                // Если редактирование/удаление/загрузка изображения - находим товар
+                const productId = req.params.id;
+                console.log('  Request with productId:', productId);
 
-                // НОВОЕ: Если sellerId нет (например, при загрузке картинки товара),
-                // получаем товар по ID и достаём seller из товара
-                if (!sellerId && req.params.id) {
-                    console.log('   Получаю товар по ID:', req.params.id);
-                    console.log('   Product модель:', Product);
-
-                    const product = await Product.findById(req.params.id);
-                    console.log('   Найденный товар:', product);
-
-                    if (!product) {
-                        console.log('❌ Товар не найден!');
-                        return res.status(404).json({
-                            success: false,
-                            message: 'Товар не найден'
-                        });
-                    }
-
-                    sellerId = product.seller;
-                    console.log('   sellerId из товара:', sellerId);
-                }
-
-                if (!sellerId) {
+                if (!productId) {
+                    console.log('  ❌ productId is missing');
                     return res.status(400).json({
                         success: false,
-                        message: 'ID продавца не указан'
+                        message: 'ID товара не указан'
                     });
                 }
 
-                const seller = await Seller.findById(sellerId);
+                const product = await Product.findById(productId);
+                console.log('  Product found:', product ? 'YES' : 'NO');
 
-                if (!seller) {
+                if (product) {
+                    console.log('  Product details:', {
+                        _id: product._id,
+                        name: product.name,
+                        seller: product.seller,
+                        sellerType: typeof product.seller
+                    });
+                }
+
+                if (!product) {
+                    console.log('  ❌ Product not found');
                     return res.status(404).json({
                         success: false,
-                        message: 'Продавец не найден'
+                        message: 'Товар не найден'
                     });
                 }
 
-                // Проверка владения
-                if (seller.createdBy.toString() !== req.user.id.toString()) {
-                    return res.status(403).json({
-                        success: false,
-                        message: 'Доступ запрещён. Вы можете управлять только товарами своих продавцов'
-                    });
-                }
+                sellerId = product.seller;
+                console.log('  sellerId from product:', sellerId);
+            }
 
+            console.log('  Final sellerId:', sellerId);
+
+            if (!sellerId) {
+                console.log('  ❌ sellerId is missing');
+                return res.status(400).json({
+                    success: false,
+                    message: 'ID продавца не указан'
+                });
+            }
+
+            // ВАЖНО: Owner проходит БЕЗ ПРОВЕРОК
+            if (req.user.role === 'owner') {
+                console.log('  ✅ Owner bypass - no checks');
                 return next();
             }
 
-            return res.status(403).json({
-                success: false,
-                message: 'Доступ запрещён'
-            });
+            console.log('  Loading seller with id:', sellerId);
+
+            // Для Admin/Manager - загружаем и проверяем продавца
+            const seller = await Seller.findById(sellerId)
+                .populate('city', 'name slug isActive')
+                .populate('globalCategories', 'name slug isActive');
+
+            console.log('  Seller found:', seller ? 'YES' : 'NO');
+
+            if (!seller) {
+                console.log('  ❌ Seller not found');
+                return res.status(404).json({
+                    success: false,
+                    message: 'Продавец не найден'
+                });
+            }
+
+            console.log('  Seller city:', seller.city);
+            console.log('  Seller categories:', seller.globalCategories);
+
+            // Проверка активности города
+            if (!seller.city || !seller.city.isActive) {
+                console.log('  ❌ City is inactive');
+                return res.status(403).json({
+                    success: false,
+                    message: 'Доступ запрещён. Город продавца неактивен. Обратитесь к Owner'
+                });
+            }
+
+            // Проверка активности категорий
+            if (!seller.globalCategories || seller.globalCategories.length === 0) {
+                console.log('  ❌ No global categories');
+                return res.status(403).json({
+                    success: false,
+                    message: 'Доступ запрещён. У продавца нет глобальных категорий'
+                });
+            }
+
+            const inactiveCategories = seller.globalCategories.filter(cat => !cat.isActive);
+            if (inactiveCategories.length > 0) {
+                const names = inactiveCategories.map(c => c.name).join(', ');
+                console.log('  ❌ Inactive categories:', names);
+                return res.status(403).json({
+                    success: false,
+                    message: `Доступ запрещён. Неактивные категории: ${names}. Обратитесь к Owner`
+                });
+            }
+
+            // Проверка для Manager - только свои продавцы
+            if (req.user.role === 'manager') {
+                if (seller.createdBy.toString() !== req.user.id.toString()) {
+                    console.log('  ❌ Manager access denied - not their seller');
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Доступ запрещён. Вы можете работать только со своими продавцами'
+                    });
+                }
+            }
+
+            console.log('  ✅ All checks passed');
+            next();
         } catch (error) {
-            console.error('❌ Ошибка checkProductAccess:', error);
+            console.error('❌ checkProductAccess error:', error);
+            console.error('Error stack:', error.stack);
             return res.status(500).json({
                 success: false,
-                message: 'Ошибка проверки прав доступа к товарам'
+                message: 'Ошибка проверки прав доступа'
             });
         }
     }
