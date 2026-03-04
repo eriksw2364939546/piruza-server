@@ -176,6 +176,30 @@ class CityService {
 
         return city;
     }
+
+    // Удалить город (Owner only)
+    async deleteCity(cityId) {
+        const city = await City.findById(cityId);
+
+        if (!city) {
+            throw new Error('Город не найден');
+        }
+
+        // Проверка: есть ли продавцы в этом городе?
+        const { Seller } = await import('../models/index.js');
+
+        const sellersCount = await Seller.countDocuments({ city: cityId });
+
+        if (sellersCount > 0) {
+            throw new Error(`Невозможно удалить город. Существует ${sellersCount} продавцов в этом городе. Сначала удалите или переместите продавцов.`);
+        }
+
+        await City.findByIdAndDelete(cityId);
+
+        console.log(`🗑️  Город "${city.name}" удалён`);
+
+        return city;
+    }
 }
 
 export default new CityService();

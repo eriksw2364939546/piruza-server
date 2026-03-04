@@ -11,6 +11,8 @@ const router = express.Router();
 
 // ========== ПУБЛИЧНЫЕ РОУТЫ ==========
 
+
+
 // GET /api/products/seller/:sellerId - Получить товары продавца
 // Публично: только active продавцы
 // С токеном: Owner/Admin видят всех, Manager своих
@@ -32,10 +34,12 @@ router.get(
 // ========== ADMIN РОУТЫ ==========
 
 // GET /api/products/:id - Получить товар по ID
+// Публично: только если продавец active
+// С токеном Owner/Admin: все товары
+// С токеном Manager: только своих продавцов
 router.get(
     '/:id',
-    authMiddleware.protectAdmin,
-    permissionsMiddleware.managerAccess,
+    authMiddleware.optionalAuth,  // ← ИЗМЕНЕНО!
     productController.getProductById
 );
 

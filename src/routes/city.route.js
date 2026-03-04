@@ -61,4 +61,12 @@ router.patch(
     cityController.toggleStatus
 );
 
+// DELETE /api/cities/:id - Удалить город (Owner only)
+router.delete(
+    '/:id',
+    authMiddleware.protectAdmin,
+    permissionsMiddleware.ownerOnly,
+    cityController.deleteCity
+);
+
 export default router;

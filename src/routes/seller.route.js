@@ -11,6 +11,17 @@ import uploadPhoto from '../utils/imageupload.util.js';
 const router = express.Router();
 
 // ========== ПУБЛИЧНЫЕ РОУТЫ ==========
+// GET /api/sellers/public?city=slug&category=slug - Универсальный публичный SLUG
+router.get(
+    '/public',
+    sellerController.getPublicSellersUniversal
+);
+
+// GET /api/sellers/public/active - Получить ВСЕ активные продавцы (публично)
+router.get(
+    '/public/active',
+    sellerController.getActiveSellers
+);
 
 // GET /api/sellers/public/city/:cityId - Получить публичных продавцов по городу
 // Публично: только active
@@ -26,6 +37,12 @@ router.get(
     },
     authMiddleware.optionalAuth,
     sellerController.getPublicSellers
+);
+
+// GET /api/sellers/public/city-slug/:slug - Получить продавцов по slug города
+router.get(
+    '/public/city-slug/:slug',
+    sellerController.getSellersByCitySlug
 );
 
 // GET /api/sellers/slug/:slug - Получить продавца по slug

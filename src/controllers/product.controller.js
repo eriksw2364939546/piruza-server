@@ -41,11 +41,15 @@ class ProductController {
         try {
             const { id } = req.params;
 
-            const product = await productService.getProductById(id);
+            // Передаём userId и userRole если есть токен
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
+
+            const product = await productService.getProductById(id, userId, userRole);
 
             success(res, product, 'Товар получен');
         } catch (err) {
-            error(res, err.message, 404);
+            error(res, err.message, 400);
         }
     }
 

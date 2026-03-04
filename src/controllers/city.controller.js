@@ -86,6 +86,19 @@ class CityController {
             error(res, err.message, 400);
         }
     }
+
+    // Удалить город (Owner only)
+    async deleteCity(req, res) {
+        try {
+            const { id } = req.params;
+
+            const city = await cityService.deleteCity(id);
+
+            success(res, city, 'Город удалён');
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
 }
 
 export default new CityController();

@@ -37,6 +37,54 @@ class SellerController {
         }
     }
 
+    // Универсальный публичный endpoint с query параметрами
+    async getPublicSellersUniversal(req, res) {
+        try {
+            const { city, category } = req.query;
+
+            const sellers = await sellerService.getPublicSellersUniversal(city, category);
+
+            const message = sellers.length === 0 ? '0 продавцов' : `${sellers.length} продавцов`;
+
+            success(res, sellers, message);
+        } catch (err) {
+            const statusCode = err.message.includes('не найден') ? 404 : 500;
+            error(res, err.message, statusCode);
+        }
+    }
+
+    // Получить ВСЕ активные продавцы (публично)
+    async getActiveSellers(req, res) {
+        try {
+            const { category } = req.query;
+
+            const sellers = await sellerService.getActiveSellers(category);
+
+            const message = sellers.length === 0 ? '0 продавцов' : `${sellers.length} активных продавцов`;
+
+            success(res, sellers, message);
+        } catch (err) {
+            error(res, err.message, 500);
+        }
+    }
+
+    // Получить активных продавцов по slug города (публично)
+    async getSellersByCitySlug(req, res) {
+        try {
+            const { slug } = req.params;
+            const { category } = req.query;
+
+            const sellers = await sellerService.getSellersByCitySlug(slug, category);
+
+            const message = sellers.length === 0 ? '0 продавцов' : `${sellers.length} продавцов`;
+
+            success(res, sellers, message);
+        } catch (err) {
+            const statusCode = err.message.includes('не найден') ? 404 : 500;
+            error(res, err.message, statusCode);
+        }
+    }
+
     // Получить публичных продавцов (только active)
     async getPublicSellers(req, res) {
         try {

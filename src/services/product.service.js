@@ -1,5 +1,6 @@
-import { Product, Seller } from '../models/index.js';
+import { Product, Seller, Category } from '../models/index.js';
 import { generateSlug } from '../utils/slug.util.js';
+import slugify from 'slugify';
 
 class ProductService {
     // Получить товары продавца
@@ -127,87 +128,180 @@ class ProductService {
     }
 
     // Получить товар по ID
-    async getProductById(productId) {
+    async getProductById(productId, userId = null, userRole = null) {
         const product = await Product.findById(productId)
-            .populate('category', 'name slug')
-            .populate('seller', 'name slug');
+            .populate('seller', 'name slug status city globalCategories createdBy')
+            .populate('category', 'name slug');
 
         if (!product) {
             throw new Error('Товар не найден');
         }
 
-        return product;
+        // ЛОГИКА ПО РОЛЯМ:
+
+        // 1. БЕЗ ТОКЕНА (публичный доступ)
+        if (!userId || !userRole) {
+            // Продавец должен быть active
+            if (product.seller.status !== 'active') {
+                throw new Error('Продавец не найден или неактивен');
+            }
+            return product;
+        }
+
+        // 2. OWNER/ADMIN - видят всё
+        if (userRole === 'owner' || userRole === 'admin') {
+            return product;
+        }
+
+        // 3. MANAGER - только своих продавцов
+        if (userRole === 'manager') {
+            if (product.seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Доступ запрещён. Вы можете видеть только товары своих продавцов');
+            }
+            return product;
+        }
+
+        // 4. Неизвестная роль
+        throw new Error('Неверная роль пользователя');
     }
 
     // Создать товар
-    async createProduct(data, userId, userRole) {
-        const { name, seller } = data;
+    async createProduct(productData, userId, userRole) {
+        // 1. ПРОВЕРКА КАТЕГОРИИ
+        const category = await Category.findById(productData.category);
 
-        // Проверка прав на продавца
-        const sellerDoc = await Seller.findById(seller);
-        if (!sellerDoc) {
+        if (!category) {
+            throw new Error('Категория не найдена');
+        }
+
+        // Запрет на глобальные категории
+        if (category.isGlobal) {
+            throw new Error('Нельзя создавать товар под глобальную категорию. Используйте локальную категорию продавца');
+        }
+
+        // Проверка, что категория принадлежит продавцу
+        if (category.seller.toString() !== productData.seller.toString()) {
+            throw new Error('Категория не принадлежит указанному продавцу');
+        }
+
+        // Проверка активности категории
+        if (!category.isActive) {
+            throw new Error('Нельзя создавать товар под неактивную категорию');
+        }
+
+        // 2. ПРОВЕРКА ПРОДАВЦА
+        const seller = await Seller.findById(productData.seller);
+
+        if (!seller) {
             throw new Error('Продавец не найден');
         }
 
         // Manager может создавать товары только для своих продавцов
-        if (userRole === 'manager' && sellerDoc.createdBy.toString() !== userId.toString()) {
-            throw new Error('Доступ запрещён');
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Вы можете создавать товары только для своих продавцов');
+            }
         }
 
-        // Генерируем slug
-        const baseSlug = generateSlug(name);
+        // 3. ПРОВЕРКА УНИКАЛЬНОСТИ НАЗВАНИЯ У ПРОДАВЦА
+        const existingProduct = await Product.findOne({
+            name: productData.name,
+            seller: productData.seller
+        });
 
-        // Проверяем уникальность slug внутри продавца
-        let slug = baseSlug;
-        let counter = 1;
-        while (await Product.findOne({ slug, seller })) {
-            slug = `${baseSlug}-${counter}`;
-            counter++;
+        if (existingProduct) {
+            throw new Error(`Товар "${productData.name}" уже существует у этого продавца`);
         }
 
+        // 4. ГЕНЕРАЦИЯ SLUG
+        const slug = slugify(productData.name, { lower: true, strict: true });
+
+        // 5. СОЗДАНИЕ ТОВАРА
         const product = new Product({
-            ...data,
+            ...productData,
             slug
         });
 
         await product.save();
+
+        console.log(`✅ Товар "${product.name}" создан для продавца ${seller.name}`);
+
         return product;
     }
 
     // Обновить товар
-    async updateProduct(productId, data, userId, userRole) {
-        const product = await Product.findById(productId).populate('seller');
+    async updateProduct(productId, updateData, userId, userRole) {
+        const product = await Product.findById(productId);
 
         if (!product) {
             throw new Error('Товар не найден');
         }
 
-        // Проверка прав
-        if (userRole === 'manager' && product.seller.createdBy.toString() !== userId.toString()) {
-            throw new Error('Доступ запрещён');
+        const seller = await Seller.findById(product.seller);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
         }
 
-        // Если изменяется название, генерируем новый slug
-        if (data.name && data.name !== product.name) {
-            const baseSlug = generateSlug(data.name);
+        // Manager может обновлять только товары своих продавцов
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Вы можете обновлять только товары своих продавцов');
+            }
+        }
 
-            // Проверяем уникальность внутри продавца
-            let slug = baseSlug;
-            let counter = 1;
-            while (await Product.findOne({
-                slug,
-                seller: product.seller._id,
-                _id: { $ne: productId }
-            })) {
-                slug = `${baseSlug}-${counter}`;
-                counter++;
+        // ЗАЩИТА: Запрет на изменение продавца
+        if (updateData.seller) {
+            delete updateData.seller;
+            console.log('⚠️  Попытка изменить продавца товара - игнорировано');
+        }
+
+        // НОВОЕ: Если обновляется категория
+        if (updateData.category && updateData.category !== product.category.toString()) {
+            const category = await Category.findById(updateData.category);
+
+            if (!category) {
+                throw new Error('Категория не найдена');
             }
 
-            data.slug = slug;
+            // Запрет на глобальные категории
+            if (category.isGlobal) {
+                throw new Error('Нельзя переместить товар в глобальную категорию. Используйте локальную категорию продавца');
+            }
+
+            // Проверка, что категория принадлежит продавцу
+            if (category.seller.toString() !== product.seller.toString()) {
+                throw new Error('Категория не принадлежит продавцу этого товара');
+            }
+
+            // Проверка активности категории
+            if (!category.isActive) {
+                throw new Error('Нельзя переместить товар в неактивную категорию');
+            }
         }
 
-        Object.assign(product, data);
+        // НОВОЕ: Если обновляется название
+        if (updateData.name && updateData.name !== product.name) {
+            // Проверка уникальности нового названия
+            const existingProduct = await Product.findOne({
+                name: updateData.name,
+                seller: product.seller,
+                _id: { $ne: productId }  // Исключаем текущий товар
+            });
+
+            if (existingProduct) {
+                throw new Error(`Товар "${updateData.name}" уже существует у этого продавца`);
+            }
+
+            // Обновляем slug при изменении названия
+            updateData.slug = slugify(updateData.name, { lower: true, strict: true });
+        }
+
+        // Обновляем товар
+        Object.assign(product, updateData);
         await product.save();
+
+        console.log(`✅ Товар "${product.name}" обновлён`);
 
         return product;
     }
@@ -225,7 +319,25 @@ class ProductService {
             throw new Error('Доступ запрещён');
         }
 
+        // НОВОЕ: Удаление изображения с диска
+        if (product.image) {
+            const fs = await import('fs/promises');
+            const path = await import('path');
+            const imagePath = path.join(process.cwd(), 'public', product.image);
+
+            try {
+                await fs.unlink(imagePath);
+                console.log(`  ✅ Удалено изображение товара: ${product.image}`);
+            } catch (err) {
+                console.log(`  ⚠️  Не удалось удалить изображение товара: ${product.image}`);
+            }
+        }
+
+        // Удаление товара из БД
         await Product.findByIdAndDelete(productId);
+
+        console.log(`🗑️  Товар "${product.name}" удалён`);
+
         return product;
     }
     // Заменить изображение товара (с удалением старого файла)

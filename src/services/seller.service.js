@@ -46,6 +46,153 @@ class SellerService {
         return sellers;
     }
 
+    // Универсальный публичный метод с query параметрами
+    async getPublicSellersUniversal(citySlug = null, categorySlug = null) {
+        const now = new Date();
+
+        // Базовый фильтр
+        const query = {
+            status: 'active',
+            activationEndDate: { $gt: now }
+        };
+
+        // ФИЛЬТР ПО ГОРОДУ (slug)
+        if (citySlug) {
+            const cityDoc = await City.findOne({ slug: citySlug, isActive: true });
+
+            if (!cityDoc) {
+                throw new Error('Город не найден или неактивен');
+            }
+
+            query.city = cityDoc._id;
+        }
+
+        // ФИЛЬТР ПО КАТЕГОРИИ (slug) ← ИЗМЕНЕНО!
+        if (categorySlug) {
+            const categoryDoc = await Category.findOne({
+                slug: categorySlug,
+                isGlobal: true,
+                isActive: true
+            });
+
+            if (!categoryDoc) {
+                throw new Error('Категория не найдена или неактивна');
+            }
+
+            query.globalCategories = categoryDoc._id;
+        }
+
+        const sellers = await Seller.find(query)
+            .populate({
+                path: 'city',
+                match: { isActive: true },
+                select: 'name slug'
+            })
+            .populate({
+                path: 'globalCategories',
+                match: { isActive: true },
+                select: 'name slug'
+            })
+            .select('name slug logo coverImage averageRating totalRatings city globalCategories')
+            .sort({ createdAt: -1 });
+
+        // Фильтруем где город или категории стали null
+        const filteredSellers = sellers.filter(seller => {
+            if (!seller.city) return false;
+            if (seller.globalCategories.length === 0) return false;
+            return true;
+        });
+
+        return filteredSellers;
+    }
+
+    // Получить ВСЕ активные продавцы (публично, БЕЗ фильтра по городу)
+    async getActiveSellers(globalCategoryId = null) {
+        const now = new Date();
+
+        // Базовый фильтр: только active + срок не истёк
+        const query = {
+            status: 'active',
+            activationEndDate: { $gt: now }
+        };
+
+        // Фильтр по категории (опционально)
+        if (globalCategoryId) {
+            query.globalCategories = globalCategoryId;
+        }
+
+        const sellers = await Seller.find(query)
+            .populate({
+                path: 'city',
+                match: { isActive: true }, // Только активные города
+                select: 'name slug'
+            })
+            .populate({
+                path: 'globalCategories',
+                match: { isActive: true }, // Только активные категории
+                select: 'name slug'
+            })
+            .select('name slug logo coverImage averageRating totalRatings city globalCategories')
+            .sort({ createdAt: -1 });
+
+        // Фильтруем продавцов где город или категории стали null (неактивные)
+        const filteredSellers = sellers.filter(seller => {
+            // Если город null → скрываем
+            if (!seller.city) return false;
+
+            // Если все категории стали null → скрываем
+            if (seller.globalCategories.length === 0) return false;
+
+            return true;
+        });
+
+        return filteredSellers;
+    }
+
+    // Получить активных продавцов по slug города (публично)
+    async getSellersByCitySlug(citySlug, globalCategoryId = null) {
+        // Найти город по slug
+        const cityDoc = await City.findOne({ slug: citySlug, isActive: true });
+
+        if (!cityDoc) {
+            throw new Error('Город не найден или неактивен');
+        }
+
+        const now = new Date();
+
+        // Базовый фильтр
+        const query = {
+            status: 'active',
+            activationEndDate: { $gt: now },
+            city: cityDoc._id  // ← Фильтр по городу
+        };
+
+        // Опциональный фильтр по категории
+        if (globalCategoryId) {
+            query.globalCategories = globalCategoryId;
+        }
+
+        const sellers = await Seller.find(query)
+            .populate({
+                path: 'city',
+                select: 'name slug'
+            })
+            .populate({
+                path: 'globalCategories',
+                match: { isActive: true },
+                select: 'name slug'
+            })
+            .select('name slug logo coverImage averageRating totalRatings city globalCategories')
+            .sort({ createdAt: -1 });
+
+        // Фильтруем где категории стали null
+        const filteredSellers = sellers.filter(seller => {
+            return seller.globalCategories.length > 0;
+        });
+
+        return filteredSellers;
+    }
+
     // Получить публичных продавцов
     // Публично: только active + isActive города/категорий
     // Owner/Admin/Manager с токеном: по логике ролей
