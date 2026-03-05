@@ -1,19 +1,21 @@
 import productService from '../services/product.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
+import { getPaginationParams } from '../utils/pagination.util.js';
 
 class ProductController {
     // Получить товары продавца
     async getProductsBySeller(req, res) {
         try {
             const { sellerId } = req.params;
+            const { page, limit } = getPaginationParams(req.query);
 
             // Передаём userId и userRole если токен есть
             const userId = req.user?.id || null;
             const userRole = req.user?.role || null;
 
-            const products = await productService.getProductsBySeller(sellerId, userId, userRole);
+            const result = await productService.getProductsBySeller(sellerId, userId, userRole, page, limit);
 
-            success(res, products, 'Товары получены');
+            success(res, result.data, 'Товары получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }

@@ -4,6 +4,7 @@ import authMiddleware from '../middlewares/auth.middleware.js';
 import permissionsMiddleware from '../middlewares/permissions.middleware.js';
 import validationMiddleware from '../middlewares/validation.middleware.js';
 import sellerRequestValidator from '../validators/sellerrequest.validator.js';
+import { requestLimiter } from '../middlewares/ratelimit.middleware.js';
 
 const router = express.Router();
 
@@ -13,7 +14,8 @@ const router = express.Router();
 router.post(
     '/',
     authMiddleware.protectAdmin,
-    permissionsMiddleware.managerOnly, // ИЗМЕНЕНО: Только Manager
+    permissionsMiddleware.managerOnly,
+    requestLimiter,  // ← ДОБАВЛЕНО
     validationMiddleware.validate(sellerRequestValidator.createRequestSchema),
     sellerRequestController.createRequest
 );

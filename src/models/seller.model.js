@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import slugify from 'slugify';
 
 const sellerSchema = new mongoose.Schema({
     name: {
@@ -88,5 +87,45 @@ const sellerSchema = new mongoose.Schema({
     timestamps: true
 });
 
+// ========== ИНДЕКСЫ ==========
+
+// Поиск по slug (уже unique, но добавляем для оптимизации)
+sellerSchema.index({ slug: 1 });
+
+// Поиск по городу
+sellerSchema.index({ city: 1 });
+
+// Фильтр по статусу
+sellerSchema.index({ status: 1 });
+
+// Поиск по глобальным категориям
+sellerSchema.index({ globalCategories: 1 });
+
+// Поиск по автору (createdBy) - для Manager'а
+sellerSchema.index({ createdBy: 1 });
+
+// Составной индекс: активные продавцы в городе
+sellerSchema.index({ city: 1, status: 1 });
+
+// Составной индекс: продавцы по категории и статусу
+sellerSchema.index({ globalCategories: 1, status: 1 });
+
+// Составной индекс: продавцы Manager'а по статусу
+sellerSchema.index({ createdBy: 1, status: 1 });
+
+// Составной индекс: активные продавцы по городу и категории (для публичных запросов)
+sellerSchema.index({ city: 1, globalCategories: 1, status: 1 });
+
+// Поиск истекающих продавцов (для cron job)
+sellerSchema.index({ activationEndDate: 1, status: 1 });
+
+// Сортировка по рейтингу
+sellerSchema.index({ averageRating: -1 });
+
+// Сортировка по популярности (просмотры)
+sellerSchema.index({ viewsCount: -1 });
+
+// Текстовый поиск по названию, описанию и типу бизнеса
+sellerSchema.index({ name: 'text', description: 'text', businessType: 'text' });
 
 export default mongoose.model('Seller', sellerSchema);

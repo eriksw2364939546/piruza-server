@@ -1,5 +1,6 @@
 import sellerService from '../services/seller.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
+import { getPaginationParams } from '../utils/pagination.util.js';
 
 class SellerController {
     // Получить всех продавцов (Owner/Admin видят всех, Manager только своих)
@@ -12,13 +13,17 @@ class SellerController {
                 category: req.query.category
             };
 
-            const sellers = await sellerService.getAllSellers(
+            const { page, limit } = getPaginationParams(req.query);
+
+            const result = await sellerService.getAllSellers(
                 filters,
                 req.user.id,
-                req.user.role
+                req.user.role,
+                page,
+                limit
             );
 
-            success(res, sellers, 'Продавцы получены');
+            success(res, result.data, 'Продавцы получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }
@@ -28,10 +33,11 @@ class SellerController {
     async getSellersByManager(req, res) {
         try {
             const { managerId } = req.params;
+            const { page, limit } = getPaginationParams(req.query);
 
-            const sellers = await sellerService.getSellersByManager(managerId);
+            const result = await sellerService.getSellersByManager(managerId, page, limit);
 
-            success(res, sellers, 'Продавцы Manager получены');
+            success(res, result.data, 'Продавцы Manager получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }
@@ -41,12 +47,13 @@ class SellerController {
     async getPublicSellersUniversal(req, res) {
         try {
             const { city, category } = req.query;
+            const { page, limit } = getPaginationParams(req.query);
 
-            const sellers = await sellerService.getPublicSellersUniversal(city, category);
+            const result = await sellerService.getPublicSellersUniversal(city, category, page, limit);
 
-            const message = sellers.length === 0 ? '0 продавцов' : `${sellers.length} продавцов`;
+            const message = result.pagination.total === 0 ? '0 продавцов' : `${result.pagination.total} продавцов`;
 
-            success(res, sellers, message);
+            success(res, result.data, message, 200, result.pagination);
         } catch (err) {
             const statusCode = err.message.includes('не найден') ? 404 : 500;
             error(res, err.message, statusCode);
@@ -57,12 +64,13 @@ class SellerController {
     async getActiveSellers(req, res) {
         try {
             const { category } = req.query;
+            const { page, limit } = getPaginationParams(req.query);
 
-            const sellers = await sellerService.getActiveSellers(category);
+            const result = await sellerService.getActiveSellers(category, page, limit);
 
-            const message = sellers.length === 0 ? '0 продавцов' : `${sellers.length} активных продавцов`;
+            const message = result.pagination.total === 0 ? '0 продавцов' : `${result.pagination.total} активных продавцов`;
 
-            success(res, sellers, message);
+            success(res, result.data, message, 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }
@@ -73,12 +81,13 @@ class SellerController {
         try {
             const { slug } = req.params;
             const { category } = req.query;
+            const { page, limit } = getPaginationParams(req.query);
 
-            const sellers = await sellerService.getSellersByCitySlug(slug, category);
+            const result = await sellerService.getSellersByCitySlug(slug, category, page, limit);
 
-            const message = sellers.length === 0 ? '0 продавцов' : `${sellers.length} продавцов`;
+            const message = result.pagination.total === 0 ? '0 продавцов' : `${result.pagination.total} продавцов`;
 
-            success(res, sellers, message);
+            success(res, result.data, message, 200, result.pagination);
         } catch (err) {
             const statusCode = err.message.includes('не найден') ? 404 : 500;
             error(res, err.message, statusCode);
@@ -90,17 +99,18 @@ class SellerController {
         try {
             const { cityId } = req.params;
             const { category } = req.query;
+            const { page, limit } = getPaginationParams(req.query);
 
             // Передаём userId и userRole если есть токен
             const userId = req.user?.id || null;
             const userRole = req.user?.role || null;
 
-            const sellers = await sellerService.getPublicSellers(cityId, category, userId, userRole);
+            const result = await sellerService.getPublicSellers(cityId, category, userId, userRole, page, limit);
 
             // НОВОЕ: Если массив пустой → сообщение "0 продавцов"
-            const message = sellers.length === 0 ? '0 продавцов' : 'Продавцы получены';
+            const message = result.pagination.total === 0 ? '0 продавцов' : 'Продавцы получены';
 
-            success(res, sellers, message);
+            success(res, result.data, message, 200, result.pagination);
         } catch (err) {
             // Если ошибка "Такого города нет" → 404
             const statusCode = err.message === 'Такого города нет' ? 404 : 500;

@@ -1,4 +1,5 @@
 import { SellerRating, Seller } from '../models/index.js';
+import { paginate } from '../utils/pagination.util.js';
 
 class RatingService {
     // Оценить продавца (create или update)
@@ -84,21 +85,21 @@ class RatingService {
     }
 
     // Получить историю оценок клиента
-    async getClientRatings(clientId) {
-        const ratings = await SellerRating.find({ client: clientId })
+    async getClientRatings(clientId, page = 1, limit = 20) {
+        const query = SellerRating.find({ client: clientId })
             .populate('seller', 'name slug logo')
             .sort({ createdAt: -1 });
 
-        return ratings;
+        return await paginate(query, page, limit);
     }
 
     // НОВОЕ: Получить все оценки продавца с деталями клиентов
-    async getSellerRatings(sellerId) {
-        const ratings = await SellerRating.find({ seller: sellerId })
+    async getSellerRatings(sellerId, page = 1, limit = 20) {
+        const query = SellerRating.find({ seller: sellerId })
             .populate('client', 'name avatar email')
             .sort({ createdAt: -1 });
 
-        return ratings;
+        return await paginate(query, page, limit);
     }
 
     // НОВОЕ: Получить оценку клиента для конкретного продавца

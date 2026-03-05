@@ -36,6 +36,8 @@ const categorySchema = new mongoose.Schema({
     timestamps: true
 });
 
+// ========== ИНДЕКСЫ ==========
+
 // Уникальность: глобальные slug уникальны, локальные - внутри продавца
 categorySchema.index({ slug: 1, isGlobal: 1 }, {
     unique: true,
@@ -46,5 +48,17 @@ categorySchema.index({ slug: 1, seller: 1 }, {
     unique: true,
     partialFilterExpression: { isGlobal: false }
 });
+
+// Поиск по продавцу (для локальных категорий)
+categorySchema.index({ seller: 1, isGlobal: 1 });
+
+// Фильтр по активности
+categorySchema.index({ isActive: 1 });
+
+// Поиск глобальных категорий
+categorySchema.index({ isGlobal: 1, isActive: 1 });
+
+// Для автора (кто создал)
+categorySchema.index({ createdBy: 1 });
 
 export default mongoose.model('Category', categorySchema);

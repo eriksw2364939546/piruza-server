@@ -1,23 +1,24 @@
 import { City } from '../models/index.js';
 import { generateSlug, generateUniqueSlug } from '../utils/slug.util.js';
+import { paginate } from '../utils/pagination.util.js';
 
 class CityService {
     // Получить все города
-    async getAllCities() {
-        const cities = await City.find()
+    async getAllCities(page = 1, limit = 20) {
+        const query = City.find()
             .populate('createdBy', 'name email')
             .sort({ createdAt: -1 });
 
-        return cities;
+        return await paginate(query, page, limit);
     }
 
     // Получить только активные города
-    async getActiveCities() {
-        const cities = await City.find({ isActive: true })
+    async getActiveCities(page = 1, limit = 20) {
+        const query = City.find({ isActive: true })
             .select('name slug')
             .sort({ name: 1 });
 
-        return cities;
+        return await paginate(query, page, limit);
     }
 
     // Получить город по slug (публично - только активные)

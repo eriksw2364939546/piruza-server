@@ -36,6 +36,26 @@ const clientSchema = new mongoose.Schema({
     timestamps: true
 });
 
+// ========== ИНДЕКСЫ ==========
+
+// Поиск по googleId (уже unique, но добавляем для оптимизации)
+clientSchema.index({ googleId: 1 });
+
+// Поиск по email (для логина/поиска)
+clientSchema.index({ email: 1 });
+
+// Фильтр по активности
+clientSchema.index({ isActive: 1 });
+
+// Поиск клиентов по городу
+clientSchema.index({ city: 1 });
+
+// Поиск по избранным продавцам
+clientSchema.index({ favorites: 1 });
+
+// Составной индекс для активных клиентов в городе
+clientSchema.index({ city: 1, isActive: 1 });
+
 // ЧИСТАЯ МОДЕЛЬ - БЕЗ ХУКОВ, БЕЗ МЕТОДОВ
 // Вся логика в сервисах!
 

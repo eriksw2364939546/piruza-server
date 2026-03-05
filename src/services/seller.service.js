@@ -1,6 +1,7 @@
 import { Seller, City, Category, Product } from '../models/index.js';
 import { generateSlug, generateUniqueSlug } from '../utils/slug.util.js';
 import { sendActivationEmail } from '../utils/email.util.js';
+import { paginate } from '../utils/pagination.util.js';
 
 class SellerService {
     // НОВАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ - проверка доступности продавца
@@ -27,8 +28,9 @@ class SellerService {
 
         return true;
     }
+
     // Получить всех продавцов (Owner все, Admin фильтрованные, Manager свои фильтрованные)
-    async getAllSellers(filters, userId, userRole) {
+    async getAllSellers(filters, userId, userRole, page = 1, limit = 20) {
         const { query, status, city, category } = filters;
 
         const queryObj = {};
@@ -51,36 +53,54 @@ class SellerService {
             ];
         }
 
-        const sellers = await Seller.find(queryObj)
-            .populate('city', 'name slug isActive')  // ← Добавлен isActive
-            .populate('globalCategories', 'name slug isActive')  // ← Добавлен isActive
+        const sellersQuery = Seller.find(queryObj)
+            .populate('city', 'name slug isActive')
+            .populate('globalCategories', 'name slug isActive')
             .populate('createdBy', 'name email role')
             .sort({ createdAt: -1 });
 
-        // НОВОЕ: Фильтрация для Admin/Manager
-        if (userRole === 'admin' || userRole === 'manager') {
-            const filteredSellers = sellers.filter(seller => {
-                return this.checkSellerAccessibility(seller, userRole);
-            });
-            return filteredSellers;
+        // Owner - используем пагинацию сразу
+        if (userRole === 'owner') {
+            return await paginate(sellersQuery, page, limit);
         }
 
-        // Owner видит всех
-        return sellers;
+        // Admin/Manager - сначала получаем все, фильтруем, потом пагинация вручную
+        const allSellers = await sellersQuery;
+        const filteredSellers = allSellers.filter(seller => {
+            return this.checkSellerAccessibility(seller, userRole);
+        });
+
+        // Ручная пагинация для отфильтрованных данных
+        const skip = (page - 1) * limit;
+        const paginatedData = filteredSellers.slice(skip, skip + limit);
+        const total = filteredSellers.length;
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            data: paginatedData,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages,
+                hasNext: page < totalPages,
+                hasPrev: page > 1
+            }
+        };
     }
 
     // Получить продавцов конкретного Manager'а (для Owner/Admin dashboard)
-    async getSellersByManager(managerId) {
-        const sellers = await Seller.find({ createdBy: managerId })
+    async getSellersByManager(managerId, page = 1, limit = 20) {
+        const query = Seller.find({ createdBy: managerId })
             .populate('city', 'name slug')
             .populate('globalCategories', 'name slug')
             .sort({ createdAt: -1 });
 
-        return sellers;
+        return await paginate(query, page, limit);
     }
 
     // Универсальный публичный метод с query параметрами
-    async getPublicSellersUniversal(citySlug = null, categorySlug = null) {
+    async getPublicSellersUniversal(citySlug = null, categorySlug = null, page = 1, limit = 20) {
         const now = new Date();
 
         // Базовый фильтр
@@ -100,7 +120,7 @@ class SellerService {
             query.city = cityDoc._id;
         }
 
-        // ФИЛЬТР ПО КАТЕГОРИИ (slug) ← ИЗМЕНЕНО!
+        // ФИЛЬТР ПО КАТЕГОРИИ (slug)
         if (categorySlug) {
             const categoryDoc = await Category.findOne({
                 slug: categorySlug,
@@ -115,7 +135,7 @@ class SellerService {
             query.globalCategories = categoryDoc._id;
         }
 
-        const sellers = await Seller.find(query)
+        const sellersQuery = Seller.find(query)
             .populate({
                 path: 'city',
                 match: { isActive: true },
@@ -129,18 +149,37 @@ class SellerService {
             .select('name slug logo coverImage averageRating totalRatings city globalCategories')
             .sort({ createdAt: -1 });
 
+        // Получаем всех для фильтрации
+        const allSellers = await sellersQuery;
+
         // Фильтруем где город или категории стали null
-        const filteredSellers = sellers.filter(seller => {
+        const filteredSellers = allSellers.filter(seller => {
             if (!seller.city) return false;
             if (seller.globalCategories.length === 0) return false;
             return true;
         });
 
-        return filteredSellers;
+        // Ручная пагинация
+        const skip = (page - 1) * limit;
+        const paginatedData = filteredSellers.slice(skip, skip + limit);
+        const total = filteredSellers.length;
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            data: paginatedData,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages,
+                hasNext: page < totalPages,
+                hasPrev: page > 1
+            }
+        };
     }
 
     // Получить ВСЕ активные продавцы (публично, БЕЗ фильтра по городу)
-    async getActiveSellers(globalCategoryId = null) {
+    async getActiveSellers(globalCategoryId = null, page = 1, limit = 20) {
         const now = new Date();
 
         // Базовый фильтр: только active + срок не истёк
@@ -154,22 +193,25 @@ class SellerService {
             query.globalCategories = globalCategoryId;
         }
 
-        const sellers = await Seller.find(query)
+        const sellersQuery = Seller.find(query)
             .populate({
                 path: 'city',
-                match: { isActive: true }, // Только активные города
+                match: { isActive: true },
                 select: 'name slug'
             })
             .populate({
                 path: 'globalCategories',
-                match: { isActive: true }, // Только активные категории
+                match: { isActive: true },
                 select: 'name slug'
             })
             .select('name slug logo coverImage averageRating totalRatings city globalCategories')
             .sort({ createdAt: -1 });
 
+        // Получаем всех для фильтрации
+        const allSellers = await sellersQuery;
+
         // Фильтруем продавцов где город или категории стали null (неактивные)
-        const filteredSellers = sellers.filter(seller => {
+        const filteredSellers = allSellers.filter(seller => {
             // Если город null → скрываем
             if (!seller.city) return false;
 
@@ -179,11 +221,27 @@ class SellerService {
             return true;
         });
 
-        return filteredSellers;
+        // Ручная пагинация
+        const skip = (page - 1) * limit;
+        const paginatedData = filteredSellers.slice(skip, skip + limit);
+        const total = filteredSellers.length;
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            data: paginatedData,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages,
+                hasNext: page < totalPages,
+                hasPrev: page > 1
+            }
+        };
     }
 
     // Получить активных продавцов по slug города (публично)
-    async getSellersByCitySlug(citySlug, globalCategoryId = null) {
+    async getSellersByCitySlug(citySlug, globalCategoryId = null, page = 1, limit = 20) {
         // Найти город по slug
         const cityDoc = await City.findOne({ slug: citySlug, isActive: true });
 
@@ -197,7 +255,7 @@ class SellerService {
         const query = {
             status: 'active',
             activationEndDate: { $gt: now },
-            city: cityDoc._id  // ← Фильтр по городу
+            city: cityDoc._id
         };
 
         // Опциональный фильтр по категории
@@ -205,7 +263,7 @@ class SellerService {
             query.globalCategories = globalCategoryId;
         }
 
-        const sellers = await Seller.find(query)
+        const sellersQuery = Seller.find(query)
             .populate({
                 path: 'city',
                 select: 'name slug'
@@ -218,18 +276,37 @@ class SellerService {
             .select('name slug logo coverImage averageRating totalRatings city globalCategories')
             .sort({ createdAt: -1 });
 
+        // Получаем всех для фильтрации
+        const allSellers = await sellersQuery;
+
         // Фильтруем где категории стали null
-        const filteredSellers = sellers.filter(seller => {
+        const filteredSellers = allSellers.filter(seller => {
             return seller.globalCategories.length > 0;
         });
 
-        return filteredSellers;
+        // Ручная пагинация
+        const skip = (page - 1) * limit;
+        const paginatedData = filteredSellers.slice(skip, skip + limit);
+        const total = filteredSellers.length;
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            data: paginatedData,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages,
+                hasNext: page < totalPages,
+                hasPrev: page > 1
+            }
+        };
     }
 
     // Получить публичных продавцов
     // Публично: только active + isActive города/категорий
     // Owner/Admin/Manager с токеном: по логике ролей
-    async getPublicSellers(cityId, globalCategoryId, userId = null, userRole = null) {
+    async getPublicSellers(cityId, globalCategoryId, userId = null, userRole = null, page = 1, limit = 20) {
         // НОВОЕ: Проверяем существование и активность города
         if (cityId) {
             const cityDoc = await City.findById(cityId);
@@ -262,17 +339,20 @@ class SellerService {
 
         console.log('🔍 getPublicSellers queryObj:', JSON.stringify(queryObj, null, 2));
 
-        const sellers = await Seller.find(queryObj)
+        const sellersQuery = Seller.find(queryObj)
             .populate('city', 'name slug isActive')
             .populate('globalCategories', 'name slug isActive')
             .select('name slug logo coverImage averageRating totalRatings address city globalCategories status')
             .sort({ averageRating: -1, totalRatings: -1 });
 
+        // Получаем всех для фильтрации
+        const allSellers = await sellersQuery;
+
         // НОВОЕ: Фильтруем по isActive города и категорий (кроме Owner)
-        let filteredSellers = sellers;
+        let filteredSellers = allSellers;
 
         if (userRole !== 'owner') {
-            filteredSellers = sellers.filter(seller => {
+            filteredSellers = allSellers.filter(seller => {
                 // Проверяем активность города
                 if (!seller.city || !seller.city.isActive) {
                     return false;
@@ -290,7 +370,23 @@ class SellerService {
             });
         }
 
-        return filteredSellers;
+        // Ручная пагинация
+        const skip = (page - 1) * limit;
+        const paginatedData = filteredSellers.slice(skip, skip + limit);
+        const total = filteredSellers.length;
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            data: paginatedData,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages,
+                hasNext: page < totalPages,
+                hasPrev: page > 1
+            }
+        };
     }
 
     // Получить продавца по slug
@@ -319,8 +415,8 @@ class SellerService {
 
         // Если ЕСТЬ токен - проверяем права
         const seller = await Seller.findOne({ slug })
-            .populate('city', 'name slug isActive')  // ← Добавлен isActive
-            .populate('globalCategories', 'name slug isActive')  // ← Добавлен isActive
+            .populate('city', 'name slug isActive')
+            .populate('globalCategories', 'name slug isActive')
             .populate('createdBy', 'name email');
 
         if (!seller) {
@@ -360,8 +456,8 @@ class SellerService {
     // Получить продавца по ID
     async getSellerById(sellerId, userId, userRole) {
         const seller = await Seller.findById(sellerId)
-            .populate('city', 'name slug isActive')  // ← Добавлен isActive
-            .populate('globalCategories', 'name slug isActive')  // ← Добавлен isActive
+            .populate('city', 'name slug isActive')
+            .populate('globalCategories', 'name slug isActive')
             .populate('createdBy', 'name email role');
 
         if (!seller) {
@@ -513,8 +609,8 @@ class SellerService {
         const { localCategories, products, ...sellerData } = data;
 
         const seller = await Seller.findById(sellerId)
-            .populate('city', 'name slug isActive')  // ← Добавлен isActive
-            .populate('globalCategories', 'name slug isActive');  // ← Добавлен isActive
+            .populate('city', 'name slug isActive')
+            .populate('globalCategories', 'name slug isActive');
 
         if (!seller) {
             throw new Error('Продавец не найден');

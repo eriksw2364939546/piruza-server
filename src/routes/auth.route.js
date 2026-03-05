@@ -4,6 +4,7 @@ import authMiddleware from '../middlewares/auth.middleware.js';
 import permissionsMiddleware from '../middlewares/permissions.middleware.js';
 import validationMiddleware from '../middlewares/validation.middleware.js';
 import authValidator from '../validators/auth.validator.js';
+import { authLimiter, registerLimiter } from '../middlewares/ratelimit.middleware.js';
 
 const router = express.Router();
 
@@ -12,6 +13,7 @@ router.post(
     '/register',
     authMiddleware.protectAdmin,
     permissionsMiddleware.ownerOnly,
+    registerLimiter,  // ← ДОБАВЛЕНО
     validationMiddleware.validate(authValidator.registerAdminSchema),
     authController.registerAdmin
 );
@@ -19,6 +21,7 @@ router.post(
 // POST /api/auth/login - Вход в систему
 router.post(
     '/login',
+    authLimiter,  // ← ДОБАВЛЕНО
     validationMiddleware.validate(authValidator.loginSchema),
     authController.login
 );

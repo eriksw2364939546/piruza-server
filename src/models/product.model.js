@@ -43,7 +43,33 @@ const productSchema = new mongoose.Schema({
     timestamps: true
 });
 
+// ========== ИНДЕКСЫ ==========
+
 // Уникальность slug внутри продавца
 productSchema.index({ slug: 1, seller: 1 }, { unique: true });
+
+// Поиск товаров по продавцу
+productSchema.index({ seller: 1 });
+
+// Поиск по категории
+productSchema.index({ category: 1 });
+
+// Поиск доступных товаров
+productSchema.index({ isAvailable: 1 });
+
+// Составной индекс: товары продавца по категории
+productSchema.index({ seller: 1, category: 1 });
+
+// Составной индекс: доступные товары продавца
+productSchema.index({ seller: 1, isAvailable: 1 });
+
+// Поиск по артикулу (если используется)
+productSchema.index({ code: 1 });
+
+// Сортировка по цене
+productSchema.index({ price: 1 });
+
+// Текстовый поиск по названию и описанию
+productSchema.index({ name: 'text', description: 'text' });
 
 export default mongoose.model('Product', productSchema);

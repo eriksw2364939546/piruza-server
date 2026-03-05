@@ -1,13 +1,14 @@
 import { Product, Seller, Category } from '../models/index.js';
 import { generateSlug } from '../utils/slug.util.js';
 import slugify from 'slugify';
+import { paginate } from '../utils/pagination.util.js';
 
 class ProductService {
     // Получить товары продавца
     // Публично: только active продавцы
     // Owner/Admin: все продавцы
     // Manager: свои продавцы (любой статус)
-    async getProductsBySeller(sellerId, userId = null, userRole = null) {
+    async getProductsBySeller(sellerId, userId = null, userRole = null, page = 1, limit = 20) {
         // Если НЕТ токена (публичный доступ) - проверяем статус продавца
         if (!userId || !userRole) {
             const seller = await Seller.findOne({
@@ -20,11 +21,11 @@ class ProductService {
                 throw new Error('Продавец не найден или неактивен');
             }
 
-            const products = await Product.find({ seller: sellerId })
+            const query = Product.find({ seller: sellerId })
                 .populate('category', 'name slug')
                 .sort({ createdAt: -1 });
 
-            return products;
+            return await paginate(query, page, limit);
         }
 
         // Если ЕСТЬ токен - проверяем права
@@ -36,11 +37,11 @@ class ProductService {
 
         // Owner и Admin видят всех
         if (userRole === 'owner' || userRole === 'admin') {
-            const products = await Product.find({ seller: sellerId })
+            const query = Product.find({ seller: sellerId })
                 .populate('category', 'name slug')
                 .sort({ createdAt: -1 });
 
-            return products;
+            return await paginate(query, page, limit);
         }
 
         // Manager видит только своих (любой статус)
@@ -49,11 +50,11 @@ class ProductService {
                 throw new Error('Доступ запрещён. Вы можете видеть только товары своих продавцов');
             }
 
-            const products = await Product.find({ seller: sellerId })
+            const query = Product.find({ seller: sellerId })
                 .populate('category', 'name slug')
                 .sort({ createdAt: -1 });
 
-            return products;
+            return await paginate(query, page, limit);
         }
 
         throw new Error('Доступ запрещён');

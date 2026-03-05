@@ -4,6 +4,7 @@ import {
     sendRequestApprovalEmail,
     sendRequestRejectionEmail
 } from '../utils/email.util.js';
+import { paginate } from '../utils/pagination.util.js';
 
 class SellerRequestService {
     // Создать заявку (Manager)
@@ -47,7 +48,7 @@ class SellerRequestService {
     }
 
     // Получить заявки Manager'а (только свои)
-    async getRequestsByManager(managerId, filters = {}) {
+    async getRequestsByManager(managerId, filters = {}, page = 1, limit = 20) {
         const { status } = filters;
 
         const query = { requestedBy: managerId };
@@ -56,15 +57,15 @@ class SellerRequestService {
             query.status = status;
         }
 
-        const requests = await SellerRequest.find(query)
+        const requestsQuery = SellerRequest.find(query)
             .populate('reviewedBy', 'name email role')
             .sort({ createdAt: -1 });
 
-        return requests;
+        return await paginate(requestsQuery, page, limit);
     }
 
     // Получить все заявки (Owner/Admin)
-    async getAllRequests(filters = {}) {
+    async getAllRequests(filters = {}, page = 1, limit = 20) {
         const { status, managerId } = filters;
 
         const query = {};
@@ -77,12 +78,12 @@ class SellerRequestService {
             query.requestedBy = managerId;
         }
 
-        const requests = await SellerRequest.find(query)
+        const requestsQuery = SellerRequest.find(query)
             .populate('requestedBy', 'name email role')
             .populate('reviewedBy', 'name email role')
             .sort({ createdAt: -1 });
 
-        return requests;
+        return await paginate(requestsQuery, page, limit);
     }
 
     // Получить заявку по ID

@@ -1,26 +1,27 @@
 import { Category, Seller } from '../models/index.js';
 import { generateSlug, generateUniqueSlug } from '../utils/slug.util.js';
+import { paginate } from '../utils/pagination.util.js';
 
 class CategoryService {
     // Получить все глобальные категории (публично - только активные)
-    async getGlobalCategories() {
-        const categories = await Category.find({
+    async getGlobalCategories(page = 1, limit = 20) {
+        const query = Category.find({
             isGlobal: true,
             isActive: true // Показываем только активные
         })
             .select('name slug description')
             .sort({ name: 1 });
 
-        return categories;
+        return await paginate(query, page, limit);
     }
 
     // Получить ВСЕ глобальные категории (Owner - включая неактивные)
-    async getAllGlobalCategories() {
-        const categories = await Category.find({ isGlobal: true })
+    async getAllGlobalCategories(page = 1, limit = 20) {
+        const query = Category.find({ isGlobal: true })
             .select('name slug description isActive')
             .sort({ name: 1 });
 
-        return categories;
+        return await paginate(query, page, limit);
     }
 
     // Получить глобальную категорию по slug (публично - только активные)
@@ -57,7 +58,7 @@ class CategoryService {
     // Публично: только если продавец active
     // Owner/Admin: все
     // Manager: свои (любой статус)
-    async getSellerCategories(sellerId, userId = null, userRole = null) {
+    async getSellerCategories(sellerId, userId = null, userRole = null, page = 1, limit = 20) {
         // НОВОЕ: Проверка доступности продавца
         const seller = await Seller.findById(sellerId)
             .populate('city', 'isActive')
@@ -106,13 +107,13 @@ class CategoryService {
             }
         }
 
-        // Получаем категории
-        const categories = await Category.find({
+        // Получаем категории с пагинацией
+        const query = Category.find({
             seller: sellerId,
             isGlobal: false
         }).sort({ createdAt: -1 });
 
-        return categories;
+        return await paginate(query, page, limit);
     }
 
     // Получить категорию продавца по slug

@@ -3,6 +3,7 @@ import ratingController from '../controllers/rating.controller.js';
 import authMiddleware from '../middlewares/auth.middleware.js';
 import validationMiddleware from '../middlewares/validation.middleware.js';
 import ratingValidator from '../validators/rating.validator.js';
+import { ratingLimiter } from '../middlewares/ratelimit.middleware.js';
 
 const router = express.Router();
 
@@ -32,6 +33,7 @@ router.get(
 router.post(
     '/seller/:sellerId',
     authMiddleware.protectClient,
+    ratingLimiter,  // ← ДОБАВЛЕНО
     validationMiddleware.validate(ratingValidator.rateSellerSchema),
     ratingController.rateSeller
 );
