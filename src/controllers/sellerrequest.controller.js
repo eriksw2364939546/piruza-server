@@ -1,5 +1,6 @@
 import sellerRequestService from '../services/sellerrequest.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
+import { getPaginationParams } from '../utils/pagination.util.js';
 
 class SellerRequestController {
     // Создать заявку (Manager)
@@ -23,12 +24,16 @@ class SellerRequestController {
                 status: req.query.status
             };
 
-            const requests = await sellerRequestService.getRequestsByManager(
+            const { page, limit } = getPaginationParams(req.query);
+
+            const result = await sellerRequestService.getRequestsByManager(
                 req.user.id,
-                filters
+                filters,
+                page,
+                limit
             );
 
-            success(res, requests, 'Заявки получены');
+            success(res, result.data, 'Заявки получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }
@@ -42,9 +47,11 @@ class SellerRequestController {
                 managerId: req.query.managerId
             };
 
-            const requests = await sellerRequestService.getAllRequests(filters);
+            const { page, limit } = getPaginationParams(req.query);
 
-            success(res, requests, 'Все заявки получены');
+            const result = await sellerRequestService.getAllRequests(filters, page, limit);
+
+            success(res, result.data, 'Все заявки получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }

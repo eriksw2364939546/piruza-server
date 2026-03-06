@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 import { setupRoutes } from './routes/index.js';
 import staticFilesMiddleware from './middlewares/staticfiles.middleware.js';
 import { generalLimiter } from './middlewares/ratelimit.middleware.js';
+import globalErrorHandler from './middlewares/errorhandler.middleware.js';
+import AppError from './utils/apperror.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -177,7 +179,8 @@ app.get('/api/health', (req, res) => {
             helmet: 'enabled',
             rateLimit: 'enabled',
             noSQLProtection: 'custom',
-            xssProtection: 'custom'
+            xssProtection: 'custom',
+            globalErrorHandler: 'enabled'
         }
     });
 });
@@ -187,23 +190,12 @@ setupRoutes(app);
 
 // ========== ERROR HANDLERS ==========
 
-// 404 Handler - роут не найден
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        message: 'Route not found'
-    });
+// 404 Handler - роут не найден (используем AppError)
+app.use((req, res, next) => {
+    next(new AppError(`Маршрут ${req.originalUrl} не найден`, 404));
 });
 
-// Global Error Handler - обработка ошибок
-app.use((err, req, res, next) => {
-    console.error('❌ Error:', err);
-
-    res.status(err.statusCode || 500).json({
-        success: false,
-        message: err.message || 'Internal Server Error',
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-    });
-});
+// ГЛОБАЛЬНЫЙ ERROR HANDLER - ПОСЛЕДНИМ!
+app.use(globalErrorHandler);
 
 export default app;

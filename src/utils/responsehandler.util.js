@@ -1,10 +1,17 @@
 // Успешный ответ
-export const success = (res, data = null, message = 'Success', statusCode = 200) => {
-    return res.status(statusCode).json({
+export const success = (res, data = null, message = 'Success', statusCode = 200, pagination = null) => {
+    const response = {
         success: true,
         message,
         data
-    });
+    };
+
+    // Добавляем пагинацию если она есть
+    if (pagination) {
+        response.pagination = pagination;
+    }
+
+    return res.status(statusCode).json(response);
 };
 
 // Ошибка

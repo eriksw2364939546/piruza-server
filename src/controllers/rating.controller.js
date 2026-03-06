@@ -1,5 +1,6 @@
 import ratingService from '../services/rating.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
+import { getPaginationParams } from '../utils/pagination.util.js';
 
 class RatingController {
     // Оценить продавца (создать или обновить)
@@ -37,10 +38,11 @@ class RatingController {
     async getSellerRatings(req, res) {
         try {
             const { sellerId } = req.params;
+            const { page, limit } = getPaginationParams(req.query);
 
-            const ratings = await ratingService.getSellerRatings(sellerId);
+            const result = await ratingService.getSellerRatings(sellerId, page, limit);
 
-            success(res, ratings, 'Оценки продавца получены');
+            success(res, result.data, 'Оценки продавца получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 404);
         }
@@ -82,9 +84,11 @@ class RatingController {
     // НОВОЕ: Получить историю оценок клиента (клиент)
     async getMyRatings(req, res) {
         try {
-            const ratings = await ratingService.getClientRatings(req.client.id);
+            const { page, limit } = getPaginationParams(req.query);
 
-            success(res, ratings, 'История оценок получена');
+            const result = await ratingService.getClientRatings(req.client.id, page, limit);
+
+            success(res, result.data, 'История оценок получена', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 404);
         }

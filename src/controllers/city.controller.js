@@ -1,13 +1,16 @@
 import cityService from '../services/city.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
+import { getPaginationParams } from '../utils/pagination.util.js';
 
 class CityController {
     // Получить все города
     async getAllCities(req, res) {
         try {
-            const cities = await cityService.getAllCities();
+            const { page, limit } = getPaginationParams(req.query);
 
-            success(res, cities, 'Города получены');
+            const result = await cityService.getAllCities(page, limit);
+
+            success(res, result.data, 'Города получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }
@@ -16,9 +19,11 @@ class CityController {
     // Получить только активные города
     async getActiveCities(req, res) {
         try {
-            const cities = await cityService.getActiveCities();
+            const { page, limit } = getPaginationParams(req.query);
 
-            success(res, cities, 'Активные города получены');
+            const result = await cityService.getActiveCities(page, limit);
+
+            success(res, result.data, 'Активные города получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }

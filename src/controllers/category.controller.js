@@ -1,13 +1,16 @@
 import categoryService from '../services/category.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
+import { getPaginationParams } from '../utils/pagination.util.js';
 
 class CategoryController {
     // Получить все глобальные категории
     async getGlobalCategories(req, res) {
         try {
-            const categories = await categoryService.getGlobalCategories();
+            const { page, limit } = getPaginationParams(req.query);
 
-            success(res, categories, 'Глобальные категории получены');
+            const result = await categoryService.getGlobalCategories(page, limit);
+
+            success(res, result.data, 'Глобальные категории получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }
@@ -43,14 +46,15 @@ class CategoryController {
     async getSellerCategories(req, res) {
         try {
             const { sellerId } = req.params;
+            const { page, limit } = getPaginationParams(req.query);
 
             // Передаём userId и userRole если есть токен
             const userId = req.user?.id || null;
             const userRole = req.user?.role || null;
 
-            const categories = await categoryService.getSellerCategories(sellerId, userId, userRole);
+            const result = await categoryService.getSellerCategories(sellerId, userId, userRole, page, limit);
 
-            success(res, categories, 'Категории продавца получены');
+            success(res, result.data, 'Категории продавца получены', 200, result.pagination);
         } catch (err) {
             const statusCode = err.message.includes('не найден') ? 404 : 403;
             error(res, err.message, statusCode);
@@ -135,9 +139,11 @@ class CategoryController {
     // Получить ВСЕ глобальные категории (Owner - включая неактивные)
     async getAllGlobalCategories(req, res) {
         try {
-            const categories = await categoryService.getAllGlobalCategories();
+            const { page, limit } = getPaginationParams(req.query);
 
-            success(res, categories, 'Все глобальные категории получены');
+            const result = await categoryService.getAllGlobalCategories(page, limit);
+
+            success(res, result.data, 'Все глобальные категории получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }
