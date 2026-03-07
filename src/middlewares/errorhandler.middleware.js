@@ -1,4 +1,5 @@
-import AppError from '../utils/AppError.js';
+import AppError from '../utils/apperror.js';
+import logger from '../utils/logger.js';
 
 // ========== ОБРАБОТЧИКИ СПЕЦИФИЧНЫХ ОШИБОК ==========
 
@@ -87,7 +88,11 @@ const sendErrorProd = (err, res) => {
     }
     // Программная ошибка (недоверенная) - НЕ показываем детали
     else {
-        console.error('❌ ПРОГРАММНАЯ ОШИБКА:', err);
+        // Логируем программную ошибку
+        logger.error('ПРОГРАММНАЯ ОШИБКА (не операционная)', {
+            message: err.message,
+            stack: err.stack,
+        });
 
         res.status(500).json({
             success: false,
@@ -106,10 +111,19 @@ const globalErrorHandler = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
 
-    // Логирование для отладки
-    console.log('🔍 Error name:', err.name);
-    console.log('🔍 Error code:', err.code);
-    console.log('🔍 Is CastError?', err.name === 'CastError');
+    // ЛОГИРУЕМ ОШИБКУ
+    logger.error('GlobalErrorHandler caught error', {
+        message: err.message,
+        statusCode: err.statusCode,
+        status: err.status,
+        name: err.name,
+        code: err.code,
+        url: req.originalUrl,
+        method: req.method,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        ...(err.stack && { stack: err.stack }),
+    });
 
     // Development режим - показываем всё
     if (process.env.NODE_ENV === 'development') {

@@ -8,6 +8,7 @@ import staticFilesMiddleware from './middlewares/staticfiles.middleware.js';
 import { generalLimiter } from './middlewares/ratelimit.middleware.js';
 import globalErrorHandler from './middlewares/errorhandler.middleware.js';
 import AppError from './utils/apperror.js';
+import logger from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,7 +29,7 @@ function sanitizeNoSQL(obj) {
 
     const sanitized = {};
     for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
             // Удаляем $ и . из ключей
             const cleanKey = key.replace(/[$\.]/g, '');
             const value = obj[key];
@@ -65,7 +66,7 @@ function sanitizeXSS(obj) {
 
     const sanitized = {};
     for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
             sanitized[key] = sanitizeXSS(obj[key]);
         }
     }
@@ -104,6 +105,39 @@ app.use(cors());
 // 3. Body Parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ========== HTTP ЛОГИРОВАНИЕ ==========
+
+app.use((req, res, next) => {
+    const start = Date.now();
+
+    // Логируем ПОСЛЕ завершения запроса
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+
+        const logData = {
+            method: req.method,
+            url: req.originalUrl,
+            status: res.statusCode,
+            duration: `${duration}ms`,
+            ip: req.ip,
+            userAgent: req.get('user-agent'),
+        };
+
+        // Разные уровни в зависимости от статус кода
+        if (res.statusCode >= 500) {
+            logger.error('HTTP Request - Server Error', logData);
+        } else if (res.statusCode >= 400) {
+            logger.warn('HTTP Request - Client Error', logData);
+        } else {
+            logger.http('HTTP Request - Success', logData);
+        }
+    });
+
+    next();
+});
+
+// ========== ПРОДОЛЖЕНИЕ БЕЗОПАСНОСТИ ==========
 
 // 4. КАСТОМНАЯ ЗАЩИТА от NoSQL Injection и XSS
 app.use((req, res, next) => {
@@ -180,9 +214,35 @@ app.get('/api/health', (req, res) => {
             rateLimit: 'enabled',
             noSQLProtection: 'custom',
             xssProtection: 'custom',
-            globalErrorHandler: 'enabled'
+            globalErrorHandler: 'enabled',
+            logger: 'winston',
+            email: 'nodemailer'
         }
     });
+});
+
+// ========== ТЕСТОВЫЙ EMAIL РОУТ (УДАЛИТЬ ПОСЛЕ ПРОВЕРКИ!) ==========
+app.get('/test/email', async (req, res) => {
+    try {
+        const { sendTestEmail } = await import('./utils/email.util.js');
+
+        const testEmail = req.query.to || 'erik222333444555@gmail.com';
+
+        const result = await sendTestEmail(testEmail);
+
+        res.json({
+            success: true,
+            message: 'Тестовое письмо отправлено!',
+            messageId: result.messageId,
+            sentTo: testEmail,
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Ошибка отправки email',
+            error: err.message,
+        });
+    }
 });
 
 // Подключение всех роутов
