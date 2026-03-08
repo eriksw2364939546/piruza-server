@@ -1,6 +1,17 @@
 import sellerService from '../services/seller.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
 import { getPaginationParams } from '../utils/pagination.util.js';
+import {
+    sendActivationEmail,
+    sendActivationEmailToSeller,
+    sendActivationNotificationToOwner,
+    sendActivationNotificationToCreator,
+    sendExtensionEmail,
+    sendExtensionEmailToSeller,
+    sendExtensionNotificationToOwner,
+    sendExtensionNotificationToCreator
+} from '../utils/email.util.js';
+import { getUserEmail, getUserName, decryptField } from '../helpers/decrypt.helper.js';
 
 class SellerController {
     // Получить всех продавцов (Owner/Admin видят всех, Manager только своих)
@@ -343,10 +354,203 @@ class SellerController {
     async activateSeller(req, res) {
         try {
             const { id } = req.params;
-            // ИСПРАВЛЕНО: явно передаём undefined если months нет
             const months = req.body.months !== undefined ? req.body.months : undefined;
 
+            // Получаем продавца ДО активации
+            const { Seller, User } = await import('../models/index.js');
+            const sellerBefore = await Seller.findById(id)
+                .populate('createdBy', 'email name role');
+
+            if (!sellerBefore) {
+                return error(res, 'Продавец не найден', 404);
+            }
+
+            const previousStatus = sellerBefore.status;
+            const createdByRole = sellerBefore.createdBy.role;
+
+            // ========== РАСШИФРОВКА ==========
+            const createdByEmail = getUserEmail(sellerBefore.createdBy);
+            const createdByName = getUserName(sellerBefore.createdBy);
+            // =================================
+
+            const activatorRole = req.user.role;
+            const activatorName = req.user.name ? decryptField(req.user.name) : req.user.role;
+
+            // Активируем продавца
             const seller = await sellerService.activateSeller(id, months);
+
+            // ========== EMAIL ПРОДАВЦА (НЕ ШИФРУЕТСЯ!) ==========
+            const sellerEmail = seller.email || null;
+            // ====================================================
+
+            // ========== EMAIL УВЕДОМЛЕНИЯ ==========
+            if (previousStatus === 'draft' || previousStatus === 'expired') {
+
+                const ownerEmail = process.env.OWNER_EMAIL;
+
+                // СЛУЧАЙ 1: createdBy = Owner
+                if (createdByRole === 'owner') {
+                    if (activatorRole === 'owner') {
+                        // Owner активирует своего → только Seller
+                        if (sellerEmail) {
+                            await sendActivationEmailToSeller(
+                                sellerEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                'Owner'
+                            );
+                        }
+                    } else if (activatorRole === 'admin') {
+                        // Admin активирует продавца Owner'а → Seller + Owner
+                        if (sellerEmail) {
+                            await sendActivationEmailToSeller(
+                                sellerEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                `Admin ${activatorName}`
+                            );
+                        }
+                        await sendActivationNotificationToOwner(
+                            ownerEmail,
+                            seller.name,
+                            seller.activationEndDate,
+                            `Admin ${activatorName}`,
+                            'Owner'
+                        );
+                    }
+                }
+
+                // СЛУЧАЙ 2: createdBy = Admin
+                else if (createdByRole === 'admin') {
+                    if (activatorRole === 'owner') {
+                        // Owner активирует продавца Admin'а → Seller + Admin(создатель)
+                        if (sellerEmail) {
+                            await sendActivationEmailToSeller(
+                                sellerEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                'Owner'
+                            );
+                        }
+                        if (createdByEmail) {
+                            await sendActivationNotificationToCreator(
+                                createdByEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                'Owner'
+                            );
+                        }
+                    } else if (activatorRole === 'admin') {
+                        // Admin активирует продавца Admin'а
+                        const decryptedCurrentUserEmail = req.user.email ? decryptField(req.user.email) : null;
+
+                        if (createdByEmail === decryptedCurrentUserEmail) {
+                            // Admin сам активирует → Seller + Owner
+                            if (sellerEmail) {
+                                await sendActivationEmailToSeller(
+                                    sellerEmail,
+                                    seller.name,
+                                    seller.activationEndDate,
+                                    `Admin ${activatorName}`
+                                );
+                            }
+                            await sendActivationNotificationToOwner(
+                                ownerEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                `Admin ${activatorName}`,
+                                `Admin ${createdByName}`
+                            );
+                        } else {
+                            // Другой Admin → Seller + Owner + Admin(создатель)
+                            if (sellerEmail) {
+                                await sendActivationEmailToSeller(
+                                    sellerEmail,
+                                    seller.name,
+                                    seller.activationEndDate,
+                                    `Admin ${activatorName}`
+                                );
+                            }
+                            await sendActivationNotificationToOwner(
+                                ownerEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                `Admin ${activatorName}`,
+                                `Admin ${createdByName}`
+                            );
+                            if (createdByEmail) {
+                                await sendActivationNotificationToCreator(
+                                    createdByEmail,
+                                    seller.name,
+                                    seller.activationEndDate,
+                                    `Admin ${activatorName}`
+                                );
+                            }
+                        }
+                    }
+                }
+
+                else if (createdByRole === 'manager') {
+                    if (activatorRole === 'owner') {
+                        // Owner активирует продавца Manager'а → Manager + Seller
+                        if (createdByEmail) {
+                            await sendActivationEmail(
+                                createdByEmail,
+                                seller.name,
+                                seller.activationEndDate
+                            );
+                        }
+
+                        console.log('🔍 [DEBUG SELLER EMAIL] seller.email:', seller.email);
+                        console.log('🔍 [DEBUG SELLER EMAIL] sellerEmail:', sellerEmail);
+
+                        if (sellerEmail) {
+                            console.log('✅ [DEBUG] Отправляем email seller...');
+                            await sendActivationEmailToSeller(
+                                sellerEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                'Owner'
+                            );
+                        } else {
+                            console.error('❌ [DEBUG] sellerEmail пустой! НЕ отправляем!');
+                        }
+                    } else if (activatorRole === 'admin') {
+                        // Admin активирует продавца Manager'а → Manager + Seller + Owner
+                        if (createdByEmail) {
+                            await sendActivationEmail(
+                                createdByEmail,
+                                seller.name,
+                                seller.activationEndDate
+                            );
+                        }
+
+                        console.log('🔍 [DEBUG SELLER EMAIL] seller.email:', seller.email);
+                        console.log('🔍 [DEBUG SELLER EMAIL] sellerEmail:', sellerEmail);
+
+                        if (sellerEmail) {
+                            console.log('✅ [DEBUG] Отправляем email seller...');
+                            await sendActivationEmailToSeller(
+                                sellerEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                `Admin ${activatorName}`
+                            );
+                        } else {
+                            console.error('❌ [DEBUG] sellerEmail пустой! НЕ отправляем!');
+                        }
+
+                        await sendActivationNotificationToOwner(
+                            ownerEmail,
+                            seller.name,
+                            seller.activationEndDate,
+                            `Admin ${activatorName}`,
+                            `Manager ${createdByName}`
+                        );
+                    }
+                }
+            }
+            // ========== КОНЕЦ EMAIL ==========
 
             success(res, seller, 'Продавец активирован');
         } catch (err) {
@@ -361,6 +565,8 @@ class SellerController {
 
             const seller = await sellerService.activateSellerManager(id, req.user.id);
 
+            // EMAIL НЕ ОТПРАВЛЯЕТСЯ - Manager редактирует по просьбе владельца
+
             success(res, seller, 'Продавец активирован');
         } catch (err) {
             error(res, err.message, 400);
@@ -373,7 +579,174 @@ class SellerController {
             const { id } = req.params;
             const { months } = req.body;
 
+            // Получаем продавца ДО продления
+            const { Seller, User } = await import('../models/index.js');
+            const sellerBefore = await Seller.findById(id)
+                .populate('createdBy', 'email name role');
+
+            if (!sellerBefore) {
+                return error(res, 'Продавец не найден', 404);
+            }
+
+            const createdByRole = sellerBefore.createdBy.role;
+
+            // ========== РАСШИФРОВКА ==========
+            const createdByEmail = getUserEmail(sellerBefore.createdBy);
+            const createdByName = getUserName(sellerBefore.createdBy);
+            // =================================
+
+            const activatorRole = req.user.role;
+            const activatorName = req.user.name ? decryptField(req.user.name) : req.user.role;
+
+            // Продлеваем
             const seller = await sellerService.extendSeller(id, months);
+
+            const sellerEmail = seller.email || null;
+
+            // ========== EMAIL УВЕДОМЛЕНИЯ ==========
+            const ownerEmail = process.env.OWNER_EMAIL;
+
+            // СЛУЧАЙ 1: createdBy = Owner
+            if (createdByRole === 'owner') {
+                if (activatorRole === 'owner') {
+                    // Owner продлевает своего → только Seller
+                    if (sellerEmail) {
+                        await sendExtensionEmailToSeller(
+                            sellerEmail,
+                            seller.name,
+                            seller.activationEndDate
+                        );
+                    }
+                } else if (activatorRole === 'admin') {
+                    // Admin продлевает продавца Owner'а → Seller + Owner
+                    if (sellerEmail) {
+                        await sendExtensionEmailToSeller(
+                            sellerEmail,
+                            seller.name,
+                            seller.activationEndDate
+                        );
+                    }
+                    await sendExtensionNotificationToOwner(
+                        ownerEmail,
+                        seller.name,
+                        seller.activationEndDate,
+                        `Admin ${activatorName}`,
+                        'Owner'
+                    );
+                }
+            }
+
+            // СЛУЧАЙ 2: createdBy = Admin
+            else if (createdByRole === 'admin') {
+                if (activatorRole === 'owner') {
+                    // Owner продлевает продавца Admin'а → Seller + Admin(создатель)
+                    if (sellerEmail) {
+                        await sendExtensionEmailToSeller(
+                            sellerEmail,
+                            seller.name,
+                            seller.activationEndDate
+                        );
+                    }
+                    if (createdByEmail) {
+                        await sendExtensionNotificationToCreator(
+                            createdByEmail,
+                            seller.name,
+                            seller.activationEndDate,
+                            'Owner'
+                        );
+                    }
+                } else if (activatorRole === 'admin') {
+                    // Admin продлевает продавца Admin'а
+                    const decryptedCurrentUserEmail = req.user.email ? decryptField(req.user.email) : null;
+
+                    if (createdByEmail === decryptedCurrentUserEmail) {
+                        // Admin сам продлевает → Seller + Owner
+                        if (sellerEmail) {
+                            await sendExtensionEmailToSeller(
+                                sellerEmail,
+                                seller.name,
+                                seller.activationEndDate
+                            );
+                        }
+                        await sendExtensionNotificationToOwner(
+                            ownerEmail,
+                            seller.name,
+                            seller.activationEndDate,
+                            `Admin ${activatorName}`,
+                            `Admin ${createdByName}`
+                        );
+                    } else {
+                        // Другой Admin → Seller + Owner + Admin(создатель)
+                        if (sellerEmail) {
+                            await sendExtensionEmailToSeller(
+                                sellerEmail,
+                                seller.name,
+                                seller.activationEndDate
+                            );
+                        }
+                        await sendExtensionNotificationToOwner(
+                            ownerEmail,
+                            seller.name,
+                            seller.activationEndDate,
+                            `Admin ${activatorName}`,
+                            `Admin ${createdByName}`
+                        );
+                        if (createdByEmail) {
+                            await sendExtensionNotificationToCreator(
+                                createdByEmail,
+                                seller.name,
+                                seller.activationEndDate,
+                                `Admin ${activatorName}`
+                            );
+                        }
+                    }
+                }
+            }
+
+            // СЛУЧАЙ 3: createdBy = Manager
+            else if (createdByRole === 'manager') {
+                if (activatorRole === 'owner') {
+                    // Owner продлевает продавца Manager'а → Manager + Seller
+                    if (createdByEmail) {
+                        await sendExtensionEmail(
+                            createdByEmail,
+                            seller.name,
+                            seller.activationEndDate
+                        );
+                    }
+                    if (sellerEmail) {
+                        await sendExtensionEmailToSeller(
+                            sellerEmail,
+                            seller.name,
+                            seller.activationEndDate
+                        );
+                    }
+                } else if (activatorRole === 'admin') {
+                    // Admin продлевает продавца Manager'а → Manager + Seller + Owner
+                    if (createdByEmail) {
+                        await sendExtensionEmail(
+                            createdByEmail,
+                            seller.name,
+                            seller.activationEndDate
+                        );
+                    }
+                    if (sellerEmail) {
+                        await sendExtensionEmailToSeller(
+                            sellerEmail,
+                            seller.name,
+                            seller.activationEndDate
+                        );
+                    }
+                    await sendExtensionNotificationToOwner(
+                        ownerEmail,
+                        seller.name,
+                        seller.activationEndDate,
+                        `Admin ${activatorName}`,
+                        `Manager ${createdByName}`
+                    );
+                }
+            }
+            // ========== КОНЕЦ EMAIL ==========
 
             success(res, seller, 'Срок продлён');
         } catch (err) {
@@ -387,6 +760,8 @@ class SellerController {
             const { id } = req.params;
 
             const seller = await sellerService.deactivateSeller(id);
+
+            // EMAIL НЕ ОТПРАВЛЯЕТСЯ - техническое действие
 
             success(res, seller, 'Продавец деактивирован');
         } catch (err) {
@@ -404,6 +779,8 @@ class SellerController {
                 req.user.id,
                 req.user.role
             );
+
+            // EMAIL НЕ ОТПРАВЛЯЕТСЯ - техническое действие
 
             success(res, seller, 'Продавец переведён в черновик');
         } catch (err) {

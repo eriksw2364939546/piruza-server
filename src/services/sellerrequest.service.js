@@ -5,6 +5,19 @@ import {
     sendRequestRejectionEmail
 } from '../utils/email.util.js';
 import { paginate } from '../utils/pagination.util.js';
+import CryptoJS from 'crypto-js';
+
+// Функция расшифровки email
+const decryptEmail = (encryptedEmail) => {
+    try {
+        const bytes = CryptoJS.AES.decrypt(encryptedEmail, process.env.CRYPTO_KEY);
+        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+        return decrypted || null;
+    } catch (error) {
+        console.error('❌ Ошибка расшифровки email:', error.message);
+        return null;
+    }
+};
 
 class SellerRequestService {
     // Создать заявку (Manager)
@@ -25,24 +38,59 @@ class SellerRequestService {
         // Получаем данные Manager'а для email
         const manager = await User.findById(managerId).select('name email');
 
+        console.log('📧 [EMAIL DEBUG] Manager (зашифрованный):', manager);
+
         // Получаем Owner и всех Admin
         const owner = await User.findOne({ role: 'owner' }).select('email');
         const admins = await User.find({ role: 'admin' }).select('email');
 
-        // Отправляем email ОДНОВРЕМЕННО Owner И всем Admin
-        const adminEmails = admins.map(admin => admin.email);
+        console.log('📧 [EMAIL DEBUG] Owner (зашифрованный):', owner);
+        console.log('📧 [EMAIL DEBUG] Admins (зашифрованные):', admins);
 
-        await sendNewRequestNotification(
-            owner.email,
-            adminEmails,
-            {
-                name,
-                businessType,
-                legalInfo,
-                managerName: manager.name,
-                managerEmail: manager.email
+        // РАСШИФРОВЫВАЕМ EMAIL
+        const managerEmail = manager?.email ? decryptEmail(manager.email) : null;
+        const managerName = manager?.name ? decryptEmail(manager.name) : 'Manager';
+        const ownerEmail = owner?.email ? decryptEmail(owner.email) : null;
+        const adminEmails = admins
+            .map(admin => admin.email ? decryptEmail(admin.email) : null)
+            .filter(Boolean);
+
+        console.log('📧 [EMAIL DEBUG] Manager email (расшифрованный):', managerEmail);
+        console.log('📧 [EMAIL DEBUG] Owner email (расшифрованный):', ownerEmail);
+        console.log('📧 [EMAIL DEBUG] Admin emails (расшифрованные):', adminEmails);
+
+        // ПРОВЕРКА: Если Owner не найден
+        if (!ownerEmail) {
+            console.error('❌ [EMAIL ERROR] Owner email не найден или не расшифрован!');
+        }
+
+        // ПРОВЕРКА: Если Admin нет
+        if (adminEmails.length === 0) {
+            console.warn('⚠️ [EMAIL WARNING] Admin emails не найдены');
+        }
+
+        // Отправляем email ТОЛЬКО если есть хотя бы один получатель
+        if (ownerEmail || adminEmails.length > 0) {
+            try {
+                await sendNewRequestNotification(
+                    ownerEmail,
+                    adminEmails,
+                    {
+                        name,
+                        businessType,
+                        legalInfo,
+                        managerName: managerName,
+                        managerEmail: managerEmail
+                    }
+                );
+                console.log('✅ [EMAIL] Уведомление о новой заявке отправлено');
+            } catch (emailError) {
+                console.error('❌ [EMAIL ERROR]:', emailError.message);
+                // НЕ падаем - заявка уже создана
             }
-        );
+        } else {
+            console.error('❌ [EMAIL ERROR] Нет получателей! Owner и Admin не найдены в БД');
+        }
 
         return request;
     }
@@ -126,10 +174,18 @@ class SellerRequestService {
 
         // Отправляем email Manager'у
         if (request.requestedBy && request.requestedBy.email) {
-            await sendRequestApprovalEmail(
-                request.requestedBy.email,
-                request.name
-            );
+            try {
+                const managerEmail = decryptEmail(request.requestedBy.email);
+
+                if (managerEmail) {
+                    await sendRequestApprovalEmail(managerEmail, request.name);
+                    console.log('✅ [EMAIL] Уведомление об одобрении отправлено Manager');
+                } else {
+                    console.error('❌ [EMAIL ERROR] Не удалось расшифровать email Manager');
+                }
+            } catch (emailError) {
+                console.error('❌ [EMAIL ERROR]:', emailError.message);
+            }
         }
 
         return request;
@@ -158,11 +214,18 @@ class SellerRequestService {
 
         // Отправляем email Manager'у с причиной
         if (request.requestedBy && request.requestedBy.email) {
-            await sendRequestRejectionEmail(
-                request.requestedBy.email,
-                request.name,
-                reason
-            );
+            try {
+                const managerEmail = decryptEmail(request.requestedBy.email);
+
+                if (managerEmail) {
+                    await sendRequestRejectionEmail(managerEmail, request.name, reason);
+                    console.log('✅ [EMAIL] Уведомление об отклонении отправлено Manager');
+                } else {
+                    console.error('❌ [EMAIL ERROR] Не удалось расшифровать email Manager');
+                }
+            } catch (emailError) {
+                console.error('❌ [EMAIL ERROR]:', emailError.message);
+            }
         }
 
         return request;

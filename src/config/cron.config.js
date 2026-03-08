@@ -1,7 +1,13 @@
 import cron from 'node-cron';
 import sellerService from '../services/seller.service.js';
-import { Seller, User } from '../models/index.js';
-import { sendExpirationReminder } from '../utils/email.util.js';
+import { Seller } from '../models/index.js';
+import {
+    sendExpirationReminder,
+    sendExpirationReminderToSeller,
+    sendExpirationNotificationToManager,
+    sendExpirationNotificationToSeller
+} from '../utils/email.util.js';
+import { getUserEmail, decryptField } from '../helpers/decrypt.helper.js';
 
 // Настройка всех cron задач
 export const setupCronJobs = () => {
@@ -10,7 +16,49 @@ export const setupCronJobs = () => {
         try {
             console.log('🕐 [CRON] Проверка истёкших продавцов...');
 
-            const count = await sellerService.checkExpiredSellers();
+            const now = new Date();
+            const expiredSellers = await Seller.find({
+                status: 'active',
+                activationEndDate: { $lte: now }
+            }).populate('createdBy', 'email name role');
+
+            let count = 0;
+
+            for (const seller of expiredSellers) {
+                // Меняем статус на expired
+                seller.status = 'expired';
+                await seller.save();
+
+                // ========== РАСШИФРОВКА ==========
+                const managerEmail = seller.createdBy ? getUserEmail(seller.createdBy) : null;
+                const sellerEmail = seller.email || null;
+                // =================================
+
+                // ========== EMAIL УВЕДОМЛЕНИЯ ==========
+
+                // Email Manager (ТОЛЬКО если продавец создан Manager'ом)
+                if (seller.createdBy &&
+                    seller.createdBy.role === 'manager' &&
+                    managerEmail) {
+                    await sendExpirationNotificationToManager(
+                        managerEmail,
+                        seller.name
+                    );
+                }
+
+                // Email Seller (ВСЕГДА)
+                if (sellerEmail) {
+                    await sendExpirationNotificationToSeller(
+                        sellerEmail,
+                        seller.name
+                    );
+                }
+
+                // ========== КОНЕЦ EMAIL ==========
+
+                count++;
+                console.log(`   ⏰ Продавец "${seller.name}" истёк и переведён в expired`);
+            }
 
             console.log(`✅ [CRON] Обработано истёкших продавцов: ${count}`);
         } catch (error) {
@@ -27,41 +75,48 @@ export const setupCronJobs = () => {
             const fiveDaysLater = new Date();
             fiveDaysLater.setDate(fiveDaysLater.getDate() + 5);
 
-            // Находим продавцов, которые истекают через 5 дней
-            const expiringSellersDocs = await Seller.find({
+            const expiringSellers = await Seller.find({
                 status: 'active',
                 activationEndDate: {
                     $gte: now,
                     $lte: fiveDaysLater
                 }
-            }).populate('createdBy', 'email name');
+            }).populate('createdBy', 'email name role');
 
             let count = 0;
 
-            for (const seller of expiringSellersDocs) {
-                if (seller.createdBy && seller.createdBy.email) {
-                    // Email Manager'у
+            for (const seller of expiringSellers) {
+                // ========== РАСШИФРОВКА ==========
+                const managerEmail = seller.createdBy ? getUserEmail(seller.createdBy) : null;
+                const sellerEmail = seller.email || null;
+                // =================================
+
+                // ========== EMAIL УВЕДОМЛЕНИЯ ==========
+
+                // Email Manager (ТОЛЬКО если продавец создан Manager'ом)
+                if (seller.createdBy &&
+                    seller.createdBy.role === 'manager' &&
+                    managerEmail) {
                     await sendExpirationReminder(
-                        seller.createdBy.email,
+                        managerEmail,
                         seller.name,
                         seller.activationEndDate
                     );
-                    count++;
                 }
-            }
 
-            // Также отправляем Owner и Admin
-            const owner = await User.findOne({ role: 'owner' }).select('email');
-            const admins = await User.find({ role: 'admin' }).select('email');
-
-            if (expiringSellersDocs.length > 0) {
-                const allEmails = [owner?.email, ...admins.map(a => a.email)].filter(Boolean);
-
-                for (const email of allEmails) {
-                    for (const seller of expiringSellersDocs) {
-                        await sendExpirationReminder(email, seller.name, seller.activationEndDate);
-                    }
+                // Email Seller (ВСЕГДА)
+                if (sellerEmail) {
+                    await sendExpirationReminderToSeller(
+                        sellerEmail,
+                        seller.name,
+                        seller.activationEndDate
+                    );
                 }
+
+                // ========== КОНЕЦ EMAIL ==========
+
+                count++;
+                console.log(`   ⚠️ Напоминание отправлено для продавца "${seller.name}"`);
             }
 
             console.log(`✅ [CRON] Отправлено напоминаний: ${count}`);

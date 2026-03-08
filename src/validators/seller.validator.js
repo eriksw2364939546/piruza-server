@@ -12,21 +12,44 @@ class SellerValidator {
             }),
 
         businessType: Joi.string()
-            .optional(),
-
-        legalInfo: Joi.string()
-            .optional(),
+            .required()
+            .messages({
+                'any.required': 'Тип бизнеса обязателен'
+            }),
 
         description: Joi.string()
-            .optional(),
+            .required()
+            .messages({
+                'any.required': 'Описание обязательно'
+            }),
 
         address: Joi.string()
-            .optional(),
+            .required()
+            .messages({
+                'any.required': 'Адрес обязателен'
+            }),
 
         phone: Joi.string()
-            .optional(),
+            .required()
+            .messages({
+                'any.required': 'Телефон обязателен'
+            }),
 
         whatsapp: Joi.string()
+            .required()
+            .messages({
+                'any.required': 'WhatsApp обязателен'
+            }),
+
+        email: Joi.string()
+            .email()
+            .required()
+            .messages({
+                'string.email': 'Неверный формат email',
+                'any.required': 'Email обязателен'
+            }),
+
+        legalInfo: Joi.string()
             .optional(),
 
         city: Joi.string()
@@ -94,6 +117,13 @@ class SellerValidator {
 
         whatsapp: Joi.string()
             .optional(),
+
+        email: Joi.string()
+            .email()
+            .optional()
+            .messages({
+                'string.email': 'Неверный формат email'
+            }),
 
         city: Joi.string()
             .optional(),

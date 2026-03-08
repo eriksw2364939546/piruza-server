@@ -35,6 +35,18 @@ const sellerSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    email: {
+        type: String,
+        required: [true, 'Email is required'],
+        trim: true,
+        lowercase: true,
+        validate: {
+            validator: function (v) {
+                return /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(v);
+            },
+            message: 'Неверный формат email'
+        }
+    },
     logo: {
         type: String,
         default: null
