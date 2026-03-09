@@ -12,7 +12,7 @@ import { getUserEmail, decryptField } from '../helpers/decrypt.helper.js';
 // Настройка всех cron задач
 export const setupCronJobs = () => {
     // 1. Проверка истёкших продавцов (каждый день в 00:00)
-    cron.schedule('0 0 * * *', async () => {
+    cron.schedule('* * * * *', async () => {
         try {
             console.log('🕐 [CRON] Проверка истёкших продавцов...');
 
@@ -30,18 +30,16 @@ export const setupCronJobs = () => {
                 await seller.save();
 
                 // ========== РАСШИФРОВКА ==========
-                const managerEmail = seller.createdBy ? getUserEmail(seller.createdBy) : null;
+                const creatorEmail = seller.createdBy ? getUserEmail(seller.createdBy) : null;
                 const sellerEmail = seller.email || null;
                 // =================================
 
                 // ========== EMAIL УВЕДОМЛЕНИЯ ==========
 
-                // Email Manager (ТОЛЬКО если продавец создан Manager'ом)
-                if (seller.createdBy &&
-                    seller.createdBy.role === 'manager' &&
-                    managerEmail) {
+                // Email создателю (Owner/Admin/Manager - ВСЕМ)
+                if (seller.createdBy && creatorEmail) {
                     await sendExpirationNotificationToManager(
-                        managerEmail,
+                        creatorEmail,
                         seller.name
                     );
                 }
@@ -67,7 +65,7 @@ export const setupCronJobs = () => {
     });
 
     // 2. Напоминания об истечении (каждый день в 10:00)
-    cron.schedule('0 10 * * *', async () => {
+    cron.schedule('* * * * *', async () => {
         try {
             console.log('🕐 [CRON] Отправка напоминаний об истечении...');
 
@@ -87,18 +85,16 @@ export const setupCronJobs = () => {
 
             for (const seller of expiringSellers) {
                 // ========== РАСШИФРОВКА ==========
-                const managerEmail = seller.createdBy ? getUserEmail(seller.createdBy) : null;
+                const creatorEmail = seller.createdBy ? getUserEmail(seller.createdBy) : null;
                 const sellerEmail = seller.email || null;
                 // =================================
 
                 // ========== EMAIL УВЕДОМЛЕНИЯ ==========
 
-                // Email Manager (ТОЛЬКО если продавец создан Manager'ом)
-                if (seller.createdBy &&
-                    seller.createdBy.role === 'manager' &&
-                    managerEmail) {
+                // Email создателю (Owner/Admin/Manager - ВСЕМ)
+                if (seller.createdBy && creatorEmail) {
                     await sendExpirationReminder(
-                        managerEmail,
+                        creatorEmail,
                         seller.name,
                         seller.activationEndDate
                     );

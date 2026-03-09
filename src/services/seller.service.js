@@ -767,11 +767,50 @@ class SellerService {
     // Активировать продавца (Owner/Admin)
     async activateSeller(sellerId, months) {
         const seller = await Seller.findById(sellerId)
-            .populate('createdBy', 'email name');
+            .populate('createdBy', 'email name')
+            .populate('city', 'isActive')
+            .populate('globalCategories', 'isActive');
 
         if (!seller) {
             throw new Error('Продавец не найден');
         }
+
+        // ========== ПРОВЕРКА ЛОКАЛЬНЫХ КАТЕГОРИЙ И ТОВАРОВ ==========
+
+        // 1. Проверка локальных категорий (isGlobal: false, seller: sellerId)
+        const categoriesCount = await Category.countDocuments({
+            seller: sellerId,
+            isGlobal: false,
+            isActive: true
+        });
+
+        if (categoriesCount === 0) {
+            throw new Error('Нельзя активировать продавца без локальных категорий. Создайте хотя бы одну категорию.');
+        }
+
+        // 2. Проверка товаров
+        const productsCount = await Product.countDocuments({
+            seller: sellerId
+        });
+
+        if (productsCount === 0) {
+            throw new Error('Нельзя активировать продавца без товаров. Добавьте хотя бы один товар.');
+        }
+
+        // ========== ПРОВЕРКА ГОРОДА И ГЛОБАЛЬНЫХ КАТЕГОРИЙ ==========
+
+        // Проверка города
+        if (!seller.city || !seller.city.isActive) {
+            throw new Error('Город неактивен, активация невозможна');
+        }
+
+        // Проверка глобальных категорий
+        const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
+        if (hasInactiveCategory) {
+            throw new Error('Одна или несколько глобальных категорий неактивны');
+        }
+
+        // ========== ЛОГИКА АКТИВАЦИИ ==========
 
         const now = new Date();
 
@@ -796,11 +835,6 @@ class SellerService {
         seller.activationEndDate = endDate;
 
         await seller.save();
-
-        // Отправляем email
-        if (seller.createdBy && seller.createdBy.email) {
-            await sendActivationEmail(seller.createdBy.email, seller.name, endDate);
-        }
 
         return seller;
     }
@@ -849,7 +883,7 @@ class SellerService {
         return seller;
     }
 
-    // Перевести в draft
+
     // Перевести в draft
     async moveToDraft(sellerId, userId, userRole) {
         const seller = await Seller.findById(sellerId);
