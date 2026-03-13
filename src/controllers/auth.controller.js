@@ -36,6 +36,38 @@ class AuthController {
             error(res, err.message, 404);
         }
     }
+    // Получить список пользователей (Owner/Admin)
+    async getAllUsers(req, res) {
+        try {
+            const { role } = req.query;  // Фильтр по роли
+
+            const users = await authService.getAllUsers(
+                role,
+                req.user.id,
+                req.user.role
+            );
+
+            success(res, users, 'Пользователи получены');
+        } catch (err) {
+            error(res, err.message, err.message === 'Доступ запрещён' ? 403 : 500);
+        }
+    }
+    // Получить пользователя по ID (с проверкой доступа)
+    async getUserById(req, res) {
+        try {
+            const { id } = req.params;
+
+            const user = await authService.getUserById(
+                id,              // userId
+                req.user.id,     // requesterId
+                req.user.role    // requesterRole
+            );
+
+            success(res, user, 'Пользователь получен');
+        } catch (err) {
+            error(res, err.message, err.message === 'Доступ запрещён' ? 403 : 404);
+        }
+    }
 
     // Обновить свой профиль
     async updateOwnProfile(req, res) {

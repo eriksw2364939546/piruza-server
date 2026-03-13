@@ -4,15 +4,21 @@ import slugify from 'slugify';
 export const generateSlug = (text, options = {}) => {
     const defaultOptions = {
         lower: true,
-        strict: true,
-        locale: 'fr' // Поддержка французского языка
+        strict: true, // убирает все спецсимволы кроме дефиса
+        locale: 'fr'  // поддержка французского (é→e, ç→c и т.д.)
     };
 
     return slugify(text, { ...defaultOptions, ...options });
 };
 
 // Генерация уникального slug
-export const generateUniqueSlug = async (Model, baseSlug, excludeId = null) => {
+// Model     — Mongoose модель для проверки уникальности
+// name      — исходное имя (например "Boulangerie Parisienne!")
+// excludeId — _id текущего документа (при обновлении)
+export const generateUniqueSlug = async (Model, name, excludeId = null) => {
+    // Сначала генерируем чистый slug из имени
+    const baseSlug = generateSlug(name);
+
     let slug = baseSlug;
     let counter = 1;
 

@@ -166,9 +166,28 @@ class ProductService {
         throw new Error('Неверная роль пользователя');
     }
 
-    // Создать товар
+    // Создать товар (ТОЛЬКО ЕСЛИ ПРОДАВЕЦ В DRAFT!)
     async createProduct(productData, userId, userRole) {
-        // 1. ПРОВЕРКА КАТЕГОРИИ
+        const seller = await Seller.findById(productData.seller);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // ========== ПРОВЕРКА СТАТУСА ПРОДАВЦА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя создавать товары для продавца в статусе '${seller.status}'. Переведите продавца в draft.`);
+        }
+        // ===============================================
+
+        // Проверка доступа
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Вы можете создавать товары только для своих продавцов');
+            }
+        }
+
+        // Проверка категории
         const category = await Category.findById(productData.category);
 
         if (!category) {
@@ -177,34 +196,20 @@ class ProductService {
 
         // Запрет на глобальные категории
         if (category.isGlobal) {
-            throw new Error('Нельзя создавать товар под глобальную категорию. Используйте локальную категорию продавца');
+            throw new Error('Нельзя создать товар в глобальной категории. Используйте локальную категорию продавца');
         }
 
-        // Проверка, что категория принадлежит продавцу
+        // Проверка что категория принадлежит продавцу
         if (category.seller.toString() !== productData.seller.toString()) {
-            throw new Error('Категория не принадлежит указанному продавцу');
+            throw new Error('Категория не принадлежит этому продавцу');
         }
 
         // Проверка активности категории
         if (!category.isActive) {
-            throw new Error('Нельзя создавать товар под неактивную категорию');
+            throw new Error('Нельзя создать товар в неактивной категории');
         }
 
-        // 2. ПРОВЕРКА ПРОДАВЦА
-        const seller = await Seller.findById(productData.seller);
-
-        if (!seller) {
-            throw new Error('Продавец не найден');
-        }
-
-        // Manager может создавать товары только для своих продавцов
-        if (userRole === 'manager') {
-            if (seller.createdBy.toString() !== userId.toString()) {
-                throw new Error('Вы можете создавать товары только для своих продавцов');
-            }
-        }
-
-        // 3. ПРОВЕРКА УНИКАЛЬНОСТИ НАЗВАНИЯ У ПРОДАВЦА
+        // Проверка уникальности названия
         const existingProduct = await Product.findOne({
             name: productData.name,
             seller: productData.seller
@@ -214,23 +219,19 @@ class ProductService {
             throw new Error(`Товар "${productData.name}" уже существует у этого продавца`);
         }
 
-        // 4. ГЕНЕРАЦИЯ SLUG
-        const slug = slugify(productData.name, { lower: true, strict: true });
+        // Генерируем slug
+        productData.slug = slugify(productData.name, { lower: true, strict: true });
 
-        // 5. СОЗДАНИЕ ТОВАРА
-        const product = new Product({
-            ...productData,
-            slug
-        });
-
+        // Создаём товар
+        const product = new Product(productData);
         await product.save();
 
-        console.log(`✅ Товар "${product.name}" создан для продавца ${seller.name}`);
+        console.log(`✅ Товар "${product.name}" создан для продавца "${seller.name}"`);
 
         return product;
     }
 
-    // Обновить товар
+    // Обновить товар (ТОЛЬКО ЕСЛИ ПРОДАВЕЦ В DRAFT!)
     async updateProduct(productId, updateData, userId, userRole) {
         const product = await Product.findById(productId);
 
@@ -244,20 +245,26 @@ class ProductService {
             throw new Error('Продавец не найден');
         }
 
-        // Manager может обновлять только товары своих продавцов
+        // ========== ПРОВЕРКА СТАТУСА ПРОДАВЦА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя редактировать товар продавца в статусе '${seller.status}'. Переведите продавца в draft.`);
+        }
+        // ===============================================
+
+        // Проверка доступа
         if (userRole === 'manager') {
             if (seller.createdBy.toString() !== userId.toString()) {
                 throw new Error('Вы можете обновлять только товары своих продавцов');
             }
         }
 
-        // ЗАЩИТА: Запрет на изменение продавца
+        // Запрет на изменение продавца
         if (updateData.seller) {
             delete updateData.seller;
             console.log('⚠️  Попытка изменить продавца товара - игнорировано');
         }
 
-        // НОВОЕ: Если обновляется категория
+        // Проверка категории
         if (updateData.category && updateData.category !== product.category.toString()) {
             const category = await Category.findById(updateData.category);
 
@@ -265,40 +272,34 @@ class ProductService {
                 throw new Error('Категория не найдена');
             }
 
-            // Запрет на глобальные категории
             if (category.isGlobal) {
-                throw new Error('Нельзя переместить товар в глобальную категорию. Используйте локальную категорию продавца');
+                throw new Error('Нельзя переместить товар в глобальную категорию');
             }
 
-            // Проверка, что категория принадлежит продавцу
             if (category.seller.toString() !== product.seller.toString()) {
                 throw new Error('Категория не принадлежит продавцу этого товара');
             }
 
-            // Проверка активности категории
             if (!category.isActive) {
                 throw new Error('Нельзя переместить товар в неактивную категорию');
             }
         }
 
-        // НОВОЕ: Если обновляется название
+        // Проверка уникальности названия
         if (updateData.name && updateData.name !== product.name) {
-            // Проверка уникальности нового названия
             const existingProduct = await Product.findOne({
                 name: updateData.name,
                 seller: product.seller,
-                _id: { $ne: productId }  // Исключаем текущий товар
+                _id: { $ne: productId }
             });
 
             if (existingProduct) {
                 throw new Error(`Товар "${updateData.name}" уже существует у этого продавца`);
             }
 
-            // Обновляем slug при изменении названия
             updateData.slug = slugify(updateData.name, { lower: true, strict: true });
         }
 
-        // Обновляем товар
         Object.assign(product, updateData);
         await product.save();
 
@@ -307,37 +308,51 @@ class ProductService {
         return product;
     }
 
-    // Удалить товар
+    // Удалить товар (ТОЛЬКО ЕСЛИ ПРОДАВЕЦ В DRAFT!)
     async deleteProduct(productId, userId, userRole) {
-        const product = await Product.findById(productId).populate('seller');
+        const product = await Product.findById(productId);
 
         if (!product) {
             throw new Error('Товар не найден');
         }
 
-        // Проверка прав
-        if (userRole === 'manager' && product.seller.createdBy.toString() !== userId.toString()) {
-            throw new Error('Доступ запрещён');
+        const seller = await Seller.findById(product.seller);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
         }
 
-        // НОВОЕ: Удаление изображения с диска
-        if (product.image) {
-            const fs = await import('fs/promises');
-            const path = await import('path');
-            const imagePath = path.join(process.cwd(), 'public', product.image);
+        // ========== ПРОВЕРКА СТАТУСА ПРОДАВЦА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя удалять товары продавца в статусе '${seller.status}'. Переведите продавца в draft.`);
+        }
+        // ===============================================
 
-            try {
-                await fs.unlink(imagePath);
-                console.log(`  ✅ Удалено изображение товара: ${product.image}`);
-            } catch (err) {
-                console.log(`  ⚠️  Не удалось удалить изображение товара: ${product.image}`);
+        // Проверка доступа
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Вы можете удалять только товары своих продавцов');
             }
         }
 
-        // Удаление товара из БД
-        await Product.findByIdAndDelete(productId);
+        // Удаляем все изображения товара
+        if (product.images && product.images.length > 0) {
+            const fs = await import('fs/promises');
+            const path = await import('path');
 
-        console.log(`🗑️  Товар "${product.name}" удалён`);
+            for (const imagePath of product.images) {
+                const fullPath = path.join(process.cwd(), imagePath);
+                try {
+                    await fs.unlink(fullPath);
+                } catch (err) {
+                    console.error(`Ошибка удаления изображения ${imagePath}:`, err);
+                }
+            }
+        }
+
+        await product.deleteOne();
+
+        console.log(`✅ Товар "${product.name}" удалён`);
 
         return product;
     }
@@ -365,31 +380,56 @@ class ProductService {
         return await this.updateProduct(productId, { image: newImagePath }, userId, userRole);
     }
 
-    // Удалить изображение товара
-    async deleteProductImage(productId, userId, userRole) {
-        // Получаем товар
-        const product = await this.getProductById(productId);
+    // Удалить изображение товара (ТОЛЬКО ЕСЛИ ПРОДАВЕЦ В DRAFT!)
+    async deleteProductImage(productId, imagePath, userId, userRole) {
+        const product = await Product.findById(productId);
 
-        if (!product.image) {
-            throw new Error('У товара нет изображения');
+        if (!product) {
+            throw new Error('Товар не найден');
         }
 
-        const oldImagePath = product.image;
+        const seller = await Seller.findById(product.seller);
 
-        // Удаляем файл с диска
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // ========== ПРОВЕРКА СТАТУСА ПРОДАВЦА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя удалять изображения товара в статусе '${seller.status}'. Переведите продавца в draft.`);
+        }
+        // ===============================================
+
+        // Проверка доступа
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Доступ запрещён');
+            }
+        }
+
+        // Проверка что изображение существует
+        if (!product.images || !product.images.includes(imagePath)) {
+            throw new Error('Изображение не найдено');
+        }
+
+        // Удаляем файл
         const fs = await import('fs/promises');
         const path = await import('path');
-        const oldFilePath = path.join(process.cwd(), 'public', oldImagePath);
+        const fullPath = path.join(process.cwd(), imagePath);
 
         try {
-            await fs.unlink(oldFilePath);
-            console.log(`🗑️  Удалено изображение товара: ${oldImagePath}`);
+            await fs.unlink(fullPath);
         } catch (err) {
-            console.log(`⚠️  Не удалось удалить файл: ${oldImagePath}`);
+            console.error('Ошибка удаления файла:', err);
         }
 
-        // Обновляем товар
-        return await this.updateProduct(productId, { image: null }, userId, userRole);
+        // Удаляем из массива
+        product.images = product.images.filter(img => img !== imagePath);
+        await product.save();
+
+        console.log(`✅ Изображение удалено у товара "${product.name}"`);
+
+        return product;
     }
 }
 

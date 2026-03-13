@@ -140,6 +140,128 @@ class AuthService {
             role: owner.role
         };
     }
+    // Получить список пользователей (Owner видит всех, Admin видит admin+manager)
+    async getAllUsers(role, requesterId, requesterRole) {
+        // ПРАВИЛО ДОСТУПА:
+        // Owner → видит всех (owner, admin, manager)
+        // Admin → видит admin + manager (НЕ видит owner)
+        // Manager → 403
+
+        if (requesterRole === 'manager') {
+            throw new Error('Доступ запрещён');
+        }
+
+        // Построение фильтра
+        let roleFilter = {};
+
+        if (requesterRole === 'owner') {
+            // Owner видит всех
+            if (role) {
+                roleFilter.role = role;
+            } else {
+                roleFilter.role = { $in: ['owner', 'admin', 'manager'] };
+            }
+        } else if (requesterRole === 'admin') {
+            // Admin видит только admin и manager
+            if (role) {
+                if (role === 'owner') {
+                    throw new Error('Доступ запрещён');
+                }
+                roleFilter.role = role;
+            } else {
+                roleFilter.role = { $in: ['admin', 'manager'] };
+            }
+        }
+
+        // Исключаем самого запросившего
+        const filter = {
+            ...roleFilter,
+            _id: { $ne: requesterId }
+        };
+
+        // Получаем пользователей
+        const users = await User.find(filter)
+            .select('-password')
+            .populate('createdBy', 'name email role')
+            .sort({ createdAt: -1 });
+
+        // Расшифровываем
+        const decryptedUsers = users.map(user => {
+            const decrypted = {
+                _id: user._id,
+                email: decrypt(user.email),
+                name: decrypt(user.name),
+                role: user.role,
+                isActive: user.isActive,
+                createdAt: user.createdAt
+            };
+
+            // Дешифруем createdBy если есть
+            if (user.createdBy) {
+                decrypted.createdBy = {
+                    _id: user.createdBy._id,
+                    email: decrypt(user.createdBy.email),
+                    name: decrypt(user.createdBy.name),
+                    role: user.createdBy.role
+                };
+            }
+
+            return decrypted;
+        });
+
+        return decryptedUsers;
+    }
+    // Получить пользователя по ID (с проверкой доступа по ролям)
+    async getUserById(userId, requesterId, requesterRole) {
+        const user = await User.findById(userId)
+            .select('-password')
+            .populate('createdBy', 'name email role');
+
+        if (!user) {
+            throw new Error('Пользователь не найден');
+        }
+
+        // ========== ПРОВЕРКА ДОСТУПА ПО РОЛЯМ ==========
+
+        // Manager → 403 (не может видеть других)
+        if (requesterRole === 'manager') {
+            throw new Error('Доступ запрещён');
+        }
+
+        // Admin → видит admin + manager (НЕ owner)
+        if (requesterRole === 'admin') {
+            if (user.role === 'owner') {
+                throw new Error('Доступ запрещён');
+            }
+        }
+
+        // Owner → видит всех (проверка не нужна)
+
+        // ================================================
+
+        // Дешифруем данные
+        const decrypted = user.toObject();
+
+        if (decrypted.email) {
+            decrypted.email = decrypt(decrypted.email);
+        }
+
+        if (decrypted.name) {
+            decrypted.name = decrypt(decrypted.name);
+        }
+
+        // Дешифруем createdBy если есть
+        if (decrypted.createdBy) {
+            if (decrypted.createdBy.email) {
+                decrypted.createdBy.email = decrypt(decrypted.createdBy.email);
+            }
+            if (decrypted.createdBy.name) {
+                decrypted.createdBy.name = decrypt(decrypted.createdBy.name);
+            }
+        }
+
+        return decrypted;
+    }
 
     // Получить профиль пользователя
     async getUserProfile(userId) {
@@ -174,6 +296,8 @@ class AuthService {
 
         return decrypted;
     }
+
+
 
     // Обновить свой профиль
     async updateOwnProfile(userId, data) {
@@ -233,23 +357,37 @@ class AuthService {
         };
     }
 
-    // Обновить профиль другого пользователя (Owner)
+    // Обновить профиль другого пользователя (Owner) ИЛИ СЕБЯ
     async updateUserProfile(targetUserId, data, currentUserId, currentUserRole) {
-        if (currentUserRole !== 'owner') {
-            throw new Error('Доступ запрещён. Только Owner может редактировать других пользователей');
-        }
-
         const targetUser = await User.findById(targetUserId).select('+password');
+
         if (!targetUser) {
             throw new Error('Пользователь не найден');
         }
 
-        if (targetUser._id.toString() === currentUserId.toString()) {
-            throw new Error('Используйте /api/auth/profile для редактирования своего профиля');
-        }
+        // Проверка: редактирует себя или другого?
+        const isSelf = targetUser._id.toString() === currentUserId.toString();
 
-        if (targetUser.role === 'owner') {
-            throw new Error('Нельзя редактировать других Owner. Owner только один в системе');
+        if (!isSelf) {
+            // Редактирует ДРУГОГО → только Owner может
+            if (currentUserRole !== 'owner') {
+                throw new Error('Доступ запрещён. Только Owner может редактировать других пользователей');
+            }
+
+            // Owner не может редактировать других Owner'ов
+            if (targetUser.role === 'owner') {
+                throw new Error('Нельзя редактировать других Owner. Owner только один в системе');
+            }
+        } else {
+            // Редактирует СЕБЯ → все могут, но НЕ могут менять свою роль
+            if (data.role && data.role !== targetUser.role) {
+                throw new Error('Нельзя изменить свою роль. Только Owner может изменять роли пользователей');
+            }
+
+            // Owner не может деактивировать себя
+            if (targetUser.role === 'owner' && data.isActive === false) {
+                throw new Error('Нельзя деактивировать себя');
+            }
         }
 
         const { email, password, name, role, isActive } = data;
@@ -283,11 +421,13 @@ class AuthService {
             targetUser.name = encrypt(name);
         }
 
-        if (role) {
+        // Роль можно менять ТОЛЬКО если Owner редактирует другого
+        if (role && !isSelf && currentUserRole === 'owner') {
             targetUser.role = role;
         }
 
-        if (isActive !== undefined) {
+        // isActive можно менять ТОЛЬКО если Owner редактирует другого
+        if (isActive !== undefined && !isSelf && currentUserRole === 'owner') {
             targetUser.isActive = isActive;
         }
 

@@ -12,7 +12,7 @@ import { getUserEmail, decryptField } from '../helpers/decrypt.helper.js';
 // Настройка всех cron задач
 export const setupCronJobs = () => {
     // 1. Проверка истёкших продавцов (каждый день в 00:00)
-    cron.schedule('* * * * *', async () => {
+    cron.schedule('0 0 * * *', async () => {
         try {
             console.log('🕐 [CRON] Проверка истёкших продавцов...');
 
@@ -65,7 +65,7 @@ export const setupCronJobs = () => {
     });
 
     // 2. Напоминания об истечении (каждый день в 10:00)
-    cron.schedule('* * * * *', async () => {
+    cron.schedule('0 10 * * *', async () => {
         try {
             console.log('🕐 [CRON] Отправка напоминаний об истечении...');
 

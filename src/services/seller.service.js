@@ -604,108 +604,132 @@ class SellerService {
         return seller;
     }
 
-    // Обновить продавца
-    async updateSeller(sellerId, data, userId, userRole) {
-        const { localCategories, products, ...sellerData } = data;
-
+    // Обновить продавца (ТОЛЬКО В DRAFT!)
+    async updateSeller(sellerId, updateData, userId, userRole) {
         const seller = await Seller.findById(sellerId)
-            .populate('city', 'name slug isActive')
-            .populate('globalCategories', 'name slug isActive');
+            .populate('city', 'isActive')
+            .populate('globalCategories', 'isActive');
 
         if (!seller) {
             throw new Error('Продавец не найден');
         }
 
-        // НОВОЕ: Проверка доступности для Admin/Manager ПЕРЕД редактированием
-        if (userRole === 'admin' || userRole === 'manager') {
-            const accessible = this.checkSellerAccessibility(seller, userRole);
+        // ========== ПРОВЕРКА СТАТУСА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя редактировать продавца в статусе '${seller.status}'. Переведите в draft для изменений.`);
+        }
+        // ======================================
 
-            if (!accessible) {
-                throw new Error('Доступ запрещён. Нельзя редактировать продавца с неактивным городом или категориями');
+        // ========== ПРОВЕРКА ПРАВ ДОСТУПА ==========
+
+        if (userRole === 'owner') {
+            // Owner может редактировать ЛЮБОГО продавца в draft
+            // Проверка не нужна
+        }
+        else if (userRole === 'admin') {
+            // Admin может редактировать СВОИХ и ЧУЖИХ
+            // НО НЕ может редактировать если город/категория неактивны
+
+            // Проверка видимости (город активен)
+            if (!seller.city.isActive) {
+                throw new Error('Доступ запрещён');
+            }
+
+            // Проверка видимости (все глобальные категории активны)
+            const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
+            if (hasInactiveCategory) {
+                throw new Error('Доступ запрещён');
+            }
+        }
+        else if (userRole === 'manager') {
+            // Manager может редактировать ТОЛЬКО СВОИХ
+
+            if (seller.createdBy.toString() !== userId) {
+                throw new Error('Доступ запрещён');
+            }
+
+            // Проверка видимости (город активен)
+            if (!seller.city.isActive) {
+                throw new Error('Доступ запрещён');
+            }
+
+            // Проверка видимости (все глобальные категории активны)
+            const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
+            if (hasInactiveCategory) {
+                throw new Error('Доступ запрещён');
             }
         }
 
-        // Проверка прав
-        if (userRole === 'manager' && seller.createdBy.toString() !== userId.toString()) {
-            throw new Error('Доступ запрещён');
+        // ===========================================
+
+        // Если меняется name → обновляем slug
+        if (updateData.name && updateData.name !== seller.name) {
+            updateData.slug = await generateUniqueSlug(Seller, updateData.name, sellerId);
         }
 
-        // ... ОСТАЛЬНОЙ КОД БЕЗ ИЗМЕНЕНИЙ
-        // Если Admin/Manager меняет город - проверяем активность
-        if (userRole !== 'owner' && sellerData.city && sellerData.city !== seller.city?.toString()) {
-            const cityDoc = await City.findById(sellerData.city);
-
-            if (!cityDoc) {
-                throw new Error('Город не найден');
-            }
-
-            if (!cityDoc.isActive) {
-                throw new Error('Можно выбрать только активный город. Обратитесь к Owner для активации города');
-            }
-        }
-
-        // Если Admin/Manager меняет глобальные категории - проверяем активность
-        if (userRole !== 'owner' && sellerData.globalCategories && sellerData.globalCategories.length > 0) {
-            const categories = await Category.find({
-                _id: { $in: sellerData.globalCategories },
-                isGlobal: true
-            });
-
-            // Проверяем что все категории существуют
-            if (categories.length !== sellerData.globalCategories.length) {
-                throw new Error('Одна или несколько глобальных категорий не найдены');
-            }
-
-            const inactiveCategories = categories.filter(cat => !cat.isActive);
-
-            if (inactiveCategories.length > 0) {
-                const names = inactiveCategories.map(c => c.name).join(', ');
-                throw new Error(`Неактивные категории: ${names}. Обратитесь к Owner для активации`);
-            }
-        }
-
-        // Если изменяется название, генерируем новый slug
-        if (sellerData.name && sellerData.name !== seller.name) {
-            const baseSlug = generateSlug(sellerData.name);
-            sellerData.slug = await generateUniqueSlug(Seller, baseSlug, sellerId);
-        }
-
-        // Обновляем основные данные продавца
-        Object.assign(seller, sellerData);
+        // Обновляем поля
+        Object.assign(seller, updateData);
         await seller.save();
 
-        // НОВОЕ: Создаём локальные категории если переданы
-        const createdCategories = [];
-        if (localCategories && localCategories.length > 0) {
-            for (const catData of localCategories) {
-                const category = new Category({
-                    ...catData,
-                    seller: sellerId,
-                    isGlobal: false
-                });
-                await category.save();
-                createdCategories.push(category);
+        return seller;
+    }
+
+    // Обновить глобальные категории (ТОЛЬКО В DRAFT!)
+    async updateSellerGlobalCategories(sellerId, globalCategories, userId, userRole) {
+        const seller = await Seller.findById(sellerId)
+            .populate('city', 'isActive')
+            .populate('globalCategories', 'isActive');
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // ========== ПРОВЕРКА СТАТУСА ==========
+
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя изменять категории продавца в статусе '${seller.status}'. Переведите в draft.`);
+        }
+
+        // ========== КОНЕЦ ПРОВЕРКИ ==========
+
+        // Проверка прав доступа
+        if (userRole === 'owner') {
+            // OK
+        } else {
+            if (seller.createdBy.toString() !== userId) {
+                throw new Error('Доступ запрещён');
+            }
+
+            if (!seller.city.isActive) {
+                throw new Error('Доступ запрещён');
+            }
+
+            const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
+            if (hasInactiveCategory) {
+                throw new Error('Доступ запрещён');
             }
         }
 
-        // НОВОЕ: Создаём товары если переданы
-        const createdProducts = [];
-        if (products && products.length > 0) {
-            for (const productData of products) {
-                const product = new Product({
-                    ...productData,
-                    seller: sellerId
-                });
-                await product.save();
-                createdProducts.push(product);
-            }
+        // Проверяем что все новые категории существуют и активны
+        const categories = await Category.find({
+            _id: { $in: globalCategories },
+            isGlobal: true
+        });
+
+        if (categories.length !== globalCategories.length) {
+            throw new Error('Одна или несколько категорий не найдены');
         }
 
-        return {
-            seller,
-            createdCategories,
-            createdProducts
-        };
+        const hasInactive = categories.some(cat => !cat.isActive);
+        if (hasInactive) {
+            throw new Error('Нельзя назначить неактивную категорию');
+        }
+
+        // Обновляем
+        seller.globalCategories = globalCategories;
+        await seller.save();
+
+        return seller;
     }
 
     // Обновить глобальные категории
@@ -1011,106 +1035,161 @@ class SellerService {
 
         return seller;
     }
-    // Заменить logo продавца (с удалением старого файла)
-    async replaceSellerLogo(sellerId, newLogoPath, userId, userRole) {
-        // Получаем продавца
-        const seller = await this.getSellerById(sellerId, userId, userRole);
-        const oldLogoPath = seller.logo;
 
-        // Удаляем старый файл
-        if (oldLogoPath) {
+
+    // Заменить logo (ТОЛЬКО В DRAFT!)
+    async replaceSellerLogo(sellerId, newLogoPath, userId, userRole) {
+        const seller = await Seller.findById(sellerId);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // ========== ПРОВЕРКА СТАТУСА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя заменять изображения продавца в статусе '${seller.status}'. Переведите в draft.`);
+        }
+        // ======================================
+
+        // Проверка доступа
+        if (userRole !== 'owner' && seller.createdBy.toString() !== userId) {
+            throw new Error('Доступ запрещён');
+        }
+
+        // Удаляем старое изображение
+        if (seller.logo) {
             const fs = await import('fs/promises');
             const path = await import('path');
-            const oldFilePath = path.join(process.cwd(), 'public', oldLogoPath);
+            const oldPath = path.join(process.cwd(), seller.logo);
 
             try {
-                await fs.unlink(oldFilePath);
-                console.log(`🗑️  Удалён старый logo: ${oldLogoPath}`);
+                await fs.unlink(oldPath);
             } catch (err) {
-                console.log(`⚠️  Не удалось удалить старый logo: ${oldLogoPath}`);
+                console.error('Ошибка удаления старого logo:', err);
             }
         }
 
-        // Обновляем продавца
-        return await this.updateSeller(sellerId, { logo: newLogoPath }, userId, userRole);
-    }
+        seller.logo = newLogoPath;
+        await seller.save();
 
-    // Удалить logo продавца
+        return seller;
+    }
+    // Удалить logo (ТОЛЬКО В DRAFT!)
     async deleteSellerLogo(sellerId, userId, userRole) {
-        // Получаем продавца
-        const seller = await this.getSellerById(sellerId, userId, userRole);
+        const seller = await Seller.findById(sellerId);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // ========== ПРОВЕРКА СТАТУСА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя удалять изображения продавца в статусе '${seller.status}'. Переведите в draft.`);
+        }
+        // ======================================
+
+        // Проверка доступа
+        if (userRole !== 'owner' && seller.createdBy.toString() !== userId) {
+            throw new Error('Доступ запрещён');
+        }
 
         if (!seller.logo) {
             throw new Error('У продавца нет logo');
         }
 
-        const oldLogoPath = seller.logo;
-
-        // Удаляем файл с диска
+        // Удаляем файл
         const fs = await import('fs/promises');
         const path = await import('path');
-        const oldFilePath = path.join(process.cwd(), 'public', oldLogoPath);
+        const logoPath = path.join(process.cwd(), seller.logo);
 
         try {
-            await fs.unlink(oldFilePath);
-            console.log(`🗑️  Удалён logo: ${oldLogoPath}`);
+            await fs.unlink(logoPath);
         } catch (err) {
-            console.log(`⚠️  Не удалось удалить logo: ${oldLogoPath}`);
+            console.error('Ошибка удаления logo:', err);
         }
 
-        // Обновляем продавца
-        return await this.updateSeller(sellerId, { logo: null }, userId, userRole);
+        seller.logo = null;
+        await seller.save();
+
+        return seller;
     }
 
-    // Заменить cover продавца (с удалением старого файла)
+    // Заменить cover (ТОЛЬКО В DRAFT!)
     async replaceSellerCover(sellerId, newCoverPath, userId, userRole) {
-        // Получаем продавца
-        const seller = await this.getSellerById(sellerId, userId, userRole);
-        const oldCoverPath = seller.coverImage;
+        const seller = await Seller.findById(sellerId);
 
-        // Удаляем старый файл
-        if (oldCoverPath) {
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // ========== ПРОВЕРКА СТАТУСА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя заменять изображения продавца в статусе '${seller.status}'. Переведите в draft.`);
+        }
+        // ======================================
+
+        // Проверка доступа
+        if (userRole !== 'owner' && seller.createdBy.toString() !== userId) {
+            throw new Error('Доступ запрещён');
+        }
+
+        // Удаляем старое изображение
+        if (seller.coverImage) {
             const fs = await import('fs/promises');
             const path = await import('path');
-            const oldFilePath = path.join(process.cwd(), 'public', oldCoverPath);
+            const oldPath = path.join(process.cwd(), seller.coverImage);
 
             try {
-                await fs.unlink(oldFilePath);
-                console.log(`🗑️  Удалён старый cover: ${oldCoverPath}`);
+                await fs.unlink(oldPath);
             } catch (err) {
-                console.log(`⚠️  Не удалось удалить старый cover: ${oldCoverPath}`);
+                console.error('Ошибка удаления старого cover:', err);
             }
         }
 
-        // Обновляем продавца
-        return await this.updateSeller(sellerId, { coverImage: newCoverPath }, userId, userRole);
+        seller.coverImage = newCoverPath;
+        await seller.save();
+
+        return seller;
     }
 
-    // Удалить cover продавца
+    // Удалить cover (ТОЛЬКО В DRAFT!)
     async deleteSellerCover(sellerId, userId, userRole) {
-        // Получаем продавца
-        const seller = await this.getSellerById(sellerId, userId, userRole);
+        const seller = await Seller.findById(sellerId);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // ========== ПРОВЕРКА СТАТУСА ==========
+        if (seller.status !== 'draft') {
+            throw new Error(`Нельзя удалять изображения продавца в статусе '${seller.status}'. Переведите в draft.`);
+        }
+        // ======================================
+
+        // Проверка доступа
+        if (userRole !== 'owner' && seller.createdBy.toString() !== userId) {
+            throw new Error('Доступ запрещён');
+        }
 
         if (!seller.coverImage) {
             throw new Error('У продавца нет cover');
         }
 
-        const oldCoverPath = seller.coverImage;
-
-        // Удаляем файл с диска
+        // Удаляем файл
         const fs = await import('fs/promises');
         const path = await import('path');
-        const oldFilePath = path.join(process.cwd(), 'public', oldCoverPath);
+        const coverPath = path.join(process.cwd(), seller.coverImage);
 
         try {
-            await fs.unlink(oldFilePath);
-            console.log(`🗑️  Удалён cover: ${oldCoverPath}`);
+            await fs.unlink(coverPath);
         } catch (err) {
-            console.log(`⚠️  Не удалось удалить cover: ${oldCoverPath}`);
+            console.error('Ошибка удаления cover:', err);
         }
 
-        // Обновляем продавца
-        return await this.updateSeller(sellerId, { coverImage: null }, userId, userRole);
+        seller.coverImage = null;
+        await seller.save();
+
+        return seller;
     }
 }
 

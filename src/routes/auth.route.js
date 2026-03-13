@@ -40,6 +40,18 @@ router.put(
     validationMiddleware.validate(authValidator.updateOwnProfileSchema),
     authController.updateOwnProfile
 );
+//GET / api / auth / users - Список(БЕЗ параметра)
+router.get(
+    '/users',
+    authMiddleware.protectAdmin,
+    authController.getAllUsers
+);
+// GET /api/auth/users/:id - Пользователь по ID (Owner/Admin)
+router.get(
+    '/users/:id',
+    authMiddleware.protectAdmin,
+    authController.getUserById
+);
 
 // PUT /api/auth/users/:id - Обновить профиль другого пользователя (Owner only)
 router.put(
