@@ -117,21 +117,31 @@ class SellerRequestService {
         const { status, managerId } = filters;
 
         const query = {};
-
-        if (status) {
-            query.status = status;
-        }
-
-        if (managerId) {
-            query.requestedBy = managerId;
-        }
+        if (status) query.status = status;
+        if (managerId) query.requestedBy = managerId;
 
         const requestsQuery = SellerRequest.find(query)
             .populate('requestedBy', 'name email role')
             .populate('reviewedBy', 'name email role')
             .sort({ createdAt: -1 });
 
-        return await paginate(requestsQuery, page, limit);
+        const result = await paginate(requestsQuery, page, limit);
+
+        // Расшифровываем name и email
+        result.data = result.data.map(req => {
+            const r = req.toObject ? req.toObject() : req;
+            if (r.requestedBy) {
+                r.requestedBy.name = decryptEmail(r.requestedBy.name);
+                r.requestedBy.email = decryptEmail(r.requestedBy.email);
+            }
+            if (r.reviewedBy) {
+                r.reviewedBy.name = decryptEmail(r.reviewedBy.name);
+                r.reviewedBy.email = decryptEmail(r.reviewedBy.email);
+            }
+            return r;
+        });
+
+        return result;
     }
 
     // Получить заявку по ID

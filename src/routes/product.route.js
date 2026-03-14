@@ -31,6 +31,13 @@ router.get(
     productController.getProductBySlug
 );
 
+// GET /api/products/category/:categoryId — товары по локальной категории
+router.get(
+    '/category/:categoryId',
+    authMiddleware.optionalAuth,
+    productController.getProductsByCategory
+);
+
 // ========== ADMIN РОУТЫ ==========
 
 // GET /api/products/:id - Получить товар по ID

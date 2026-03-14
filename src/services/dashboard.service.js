@@ -1,4 +1,5 @@
 import { Seller, SellerRequest, User } from '../models/index.js';
+import { decrypt } from '../utils/crypto.util.js';
 
 class DashboardService {
     // НОВАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ - фильтрация продавцов по активности
@@ -195,7 +196,6 @@ class DashboardService {
 
     // Статистика по Manager'ам (только для Owner/Admin)
     async getManagersStats(userRole) {
-        // Получаем всех Manager'ов
         const managers = await User.find({ role: 'manager' })
             .select('name email')
             .sort({ name: 1 });
@@ -203,8 +203,11 @@ class DashboardService {
         const stats = [];
 
         for (const manager of managers) {
+            // Расшифровываем имя и email
+            const managerName = decrypt(manager.name);
+            const managerEmail = decrypt(manager.email);
+
             if (userRole === 'owner') {
-                // Owner видит ВСЮ статистику Manager'а
                 const [
                     totalSellers,
                     activeSellers,
@@ -222,21 +225,14 @@ class DashboardService {
                 stats.push({
                     manager: {
                         id: manager._id,
-                        name: manager.name,
-                        email: manager.email
+                        name: managerName,
+                        email: managerEmail
                     },
-                    sellers: {
-                        total: totalSellers,
-                        active: activeSellers
-                    },
-                    requests: {
-                        pending: pendingRequests,
-                        approved: approvedRequests,
-                        rejected: rejectedRequests
-                    }
+                    sellers: { total: totalSellers, active: activeSellers },
+                    requests: { pending: pendingRequests, approved: approvedRequests, rejected: rejectedRequests }
                 });
+
             } else {
-                // Admin видит только доступных продавцов Manager'а
                 const allSellers = await Seller.find({ createdBy: manager._id })
                     .populate('city', 'isActive')
                     .populate('globalCategories', 'isActive');
@@ -256,18 +252,14 @@ class DashboardService {
                 stats.push({
                     manager: {
                         id: manager._id,
-                        name: manager.name,
-                        email: manager.email
+                        name: managerName,
+                        email: managerEmail
                     },
                     sellers: {
                         total: filteredSellers.length,
                         active: filteredSellers.filter(s => s.status === 'active').length
                     },
-                    requests: {
-                        pending: pendingRequests,
-                        approved: approvedRequests,
-                        rejected: rejectedRequests
-                    }
+                    requests: { pending: pendingRequests, approved: approvedRequests, rejected: rejectedRequests }
                 });
             }
         }

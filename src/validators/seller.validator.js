@@ -58,11 +58,18 @@ class SellerValidator {
                 'any.required': 'ID города обязателен'
             }),
 
+        // ========== ИЗМЕНЕНО ==========
         globalCategories: Joi.array()
             .items(Joi.string())
-            .optional(),
+            .min(1)  // ← МИНИМУМ 1 КАТЕГОРИЯ
+            .required()  // ← ОБЯЗАТЕЛЬНО
+            .messages({
+                'array.min': 'Необходимо выбрать хотя бы одну глобальную категорию',
+                'any.required': 'Глобальные категории обязательны'
+            }),
+        // ==============================
 
-        // НОВОЕ: Локальные категории
+        // Локальные категории
         localCategories: Joi.array()
             .items(Joi.object({
                 name: Joi.string()
@@ -75,7 +82,7 @@ class SellerValidator {
             }))
             .optional(),
 
-        // НОВОЕ: Товары
+        // Товары
         products: Joi.array()
             .items(Joi.object({
                 name: Joi.string()
@@ -86,7 +93,7 @@ class SellerValidator {
                 code: Joi.string().optional(),
                 description: Joi.string().optional(),
                 price: Joi.number().min(0).optional(),
-                categoryIndex: Joi.number().integer().min(0).optional() // Индекс из localCategories
+                categoryIndex: Joi.number().integer().min(0).optional()
             }))
             .optional()
     });
@@ -152,7 +159,7 @@ class SellerValidator {
             .optional()
     });
 
-    // Схема для активации продавца
+
     // Схема для активации продавца
     // months опционален, т.к. Owner может активировать draft в сроке БЕЗ изменения дат
     activateSellerSchema = Joi.object({

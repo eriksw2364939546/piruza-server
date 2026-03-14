@@ -1,6 +1,7 @@
 import { City } from '../models/index.js';
 import { generateSlug, generateUniqueSlug } from '../utils/slug.util.js';
 import { paginate } from '../utils/pagination.util.js';
+import { encrypt, decrypt, hashMeta } from '../utils/crypto.util.js';
 
 class CityService {
     // Получить все города
@@ -9,7 +10,18 @@ class CityService {
             .populate('createdBy', 'name email')
             .sort({ createdAt: -1 });
 
-        return await paginate(query, page, limit);
+        const result = await paginate(query, page, limit);
+
+        // Расшифровываем name и email у createdBy
+        result.data = result.data.map(city => {
+            if (city.createdBy) {
+                city.createdBy.name = decrypt(city.createdBy.name);
+                city.createdBy.email = decrypt(city.createdBy.email);
+            }
+            return city;
+        });
+
+        return result;
     }
 
     // Получить только активные города

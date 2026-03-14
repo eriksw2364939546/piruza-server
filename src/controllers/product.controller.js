@@ -55,6 +55,25 @@ class ProductController {
         }
     }
 
+
+    async getProductsByCategory(req, res) {
+        try {
+            const { categoryId } = req.params;
+            const { page, limit } = getPaginationParams(req.query);
+
+            const userId = req.user?.id || null;
+            const userRole = req.user?.role || null;
+
+            const result = await productService.getProductsByCategory(
+                categoryId, userId, userRole, page, limit
+            );
+
+            success(res, result.data, 'Товары получены', 200, result.pagination);
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
+
     // Создать товар
     async createProduct(req, res) {
         try {

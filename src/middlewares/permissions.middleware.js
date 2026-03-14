@@ -93,6 +93,9 @@ class PermissionsMiddleware {
             }
 
             const inactiveCategories = seller.globalCategories.filter(cat => !cat.isActive);
+            // console.log('🔍 city:', seller.city);
+            // console.log('🔍 globalCategories:', JSON.stringify(seller.globalCategories));
+            // console.log('🔍 inactiveCategories:', inactiveCategories)
             if (inactiveCategories.length > 0) {
                 const names = inactiveCategories.map(c => c.name).join(', ');
                 return res.status(403).json({

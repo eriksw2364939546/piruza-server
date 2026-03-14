@@ -166,6 +166,42 @@ class ProductService {
         throw new Error('Неверная роль пользователя');
     }
 
+    // Получить товары по локальной категории
+    async getProductsByCategory(categoryId, userId = null, userRole = null, page = 1, limit = 20) {
+        const category = await Category.findById(categoryId);
+
+        if (!category) {
+            throw new Error('Категория не найдена');
+        }
+
+        // Получаем продавца для проверки доступа
+        const seller = await Seller.findById(category.seller);
+
+        if (!seller) {
+            throw new Error('Продавец не найден');
+        }
+
+        // Без токена — только active продавцы
+        if (!userId || !userRole) {
+            if (seller.status !== 'active' || seller.activationEndDate <= new Date()) {
+                throw new Error('Продавец не найден или неактивен');
+            }
+        }
+
+        // Manager — только свои
+        if (userRole === 'manager') {
+            if (seller.createdBy.toString() !== userId.toString()) {
+                throw new Error('Доступ запрещён');
+            }
+        }
+
+        const query = Product.find({ category: categoryId })
+            .populate('category', 'name slug')
+            .sort({ createdAt: -1 });
+
+        return await paginate(query, page, limit);
+    }
+
     // Создать товар (ТОЛЬКО ЕСЛИ ПРОДАВЕЦ В DRAFT!)
     async createProduct(productData, userId, userRole) {
         const seller = await Seller.findById(productData.seller);
@@ -359,7 +395,7 @@ class ProductService {
     // Заменить изображение товара (с удалением старого файла)
     async replaceProductImage(productId, newImagePath, userId, userRole) {
         // Получаем товар
-        const product = await this.getProductById(productId);
+        const product = await this.getProductById(productId, userId, userRole);
         const oldImagePath = product.image;
 
         // Удаляем старый файл
@@ -408,14 +444,14 @@ class ProductService {
         }
 
         // Проверка что изображение существует
-        if (!product.images || !product.images.includes(imagePath)) {
+        if (!product.image) {
             throw new Error('Изображение не найдено');
         }
 
         // Удаляем файл
         const fs = await import('fs/promises');
         const path = await import('path');
-        const fullPath = path.join(process.cwd(), imagePath);
+        const fullPath = path.join(process.cwd(), 'public', product.image);
 
         try {
             await fs.unlink(fullPath);
@@ -423,14 +459,15 @@ class ProductService {
             console.error('Ошибка удаления файла:', err);
         }
 
-        // Удаляем из массива
-        product.images = product.images.filter(img => img !== imagePath);
+        // Удаляем поле
+        product.image = null;
         await product.save();
 
         console.log(`✅ Изображение удалено у товара "${product.name}"`);
 
         return product;
     }
+
 }
 
 export default new ProductService();

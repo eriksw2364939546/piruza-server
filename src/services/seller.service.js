@@ -2,6 +2,7 @@ import { Seller, City, Category, Product } from '../models/index.js';
 import { generateSlug, generateUniqueSlug } from '../utils/slug.util.js';
 import { sendActivationEmail } from '../utils/email.util.js';
 import { paginate } from '../utils/pagination.util.js';
+import { decrypt } from '../utils/crypto.util.js';
 
 class SellerService {
     // НОВАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ - проверка доступности продавца
@@ -35,17 +36,34 @@ class SellerService {
 
         const queryObj = {};
 
-        // Owner/Admin видят всех, Manager только своих
         if (userRole === 'manager') {
             queryObj.createdBy = userId;
         }
 
-        // Фильтры
         if (status) queryObj.status = status;
-        if (city) queryObj.city = city;
-        if (category) queryObj.globalCategories = category;
 
-        // Поиск по названию
+        // ── Город: slug или ObjectId ──
+        if (city) {
+            const isObjectId = /^[0-9a-fA-F]{24}$/.test(city);
+            if (isObjectId) {
+                queryObj.city = city;
+            } else {
+                const cityDoc = await City.findOne({ slug: city }).select('_id');
+                queryObj.city = cityDoc ? cityDoc._id : null;
+            }
+        }
+
+        // ── Категория: slug или ObjectId ──
+        if (category) {
+            const isObjectId = /^[0-9a-fA-F]{24}$/.test(category);
+            if (isObjectId) {
+                queryObj.globalCategories = category;
+            } else {
+                const catDoc = await Category.findOne({ slug: category, isGlobal: true }).select('_id');
+                queryObj.globalCategories = catDoc ? catDoc._id : null;
+            }
+        }
+
         if (query) {
             queryObj.$or = [
                 { name: { $regex: query, $options: 'i' } },
@@ -59,25 +77,38 @@ class SellerService {
             .populate('createdBy', 'name email role')
             .sort({ createdAt: -1 });
 
-        // Owner - используем пагинацию сразу
         if (userRole === 'owner') {
-            return await paginate(sellersQuery, page, limit);
+            const result = await paginate(sellersQuery, page, limit);
+            result.data = result.data.map(seller => {
+                const s = seller.toObject ? seller.toObject() : seller;
+                if (s.createdBy) {
+                    s.createdBy.name = decrypt(s.createdBy.name);
+                    s.createdBy.email = decrypt(s.createdBy.email);
+                }
+                return s;
+            });
+            return result;
         }
 
-        // Admin/Manager - сначала получаем все, фильтруем, потом пагинация вручную
         const allSellers = await sellersQuery;
         const filteredSellers = allSellers.filter(seller => {
             return this.checkSellerAccessibility(seller, userRole);
         });
 
-        // Ручная пагинация для отфильтрованных данных
         const skip = (page - 1) * limit;
         const paginatedData = filteredSellers.slice(skip, skip + limit);
         const total = filteredSellers.length;
         const totalPages = Math.ceil(total / limit);
 
         return {
-            data: paginatedData,
+            data: paginatedData.map(seller => {
+                const s = seller.toObject ? seller.toObject() : seller;
+                if (s.createdBy) {
+                    s.createdBy.name = decrypt(s.createdBy.name);
+                    s.createdBy.email = decrypt(s.createdBy.email);
+                }
+                return s;
+            }),
             pagination: {
                 page: parseInt(page),
                 limit: parseInt(limit),
@@ -485,7 +516,7 @@ class SellerService {
     async createSeller(data, userId, userRole) {
         const { name, city, globalCategories, localCategories, products } = data;
 
-        // НОВОЕ: Проверяем город для ВСЕХ ролей (включая Owner)
+        // ========== ПРОВЕРКА ГОРОДА (ВСЕ РОЛИ) ==========
         const cityDoc = await City.findById(city);
 
         if (!cityDoc) {
@@ -499,7 +530,16 @@ class SellerService {
             }
         }
 
-        // НОВОЕ: Проверяем глобальные категории для ВСЕХ ролей
+        // ========== ПРОВЕРКА ГЛОБАЛЬНЫХ КАТЕГОРИЙ ==========
+
+        // Admin и Manager ДОЛЖНЫ указать хотя бы ОДНУ активную глобальную категорию
+        if (userRole !== 'owner') {
+            if (!globalCategories || globalCategories.length === 0) {
+                throw new Error('Необходимо выбрать хотя бы одну глобальную категорию');
+            }
+        }
+
+        // Если globalCategories переданы - проверяем их
         if (globalCategories && globalCategories.length > 0) {
             const categories = await Category.find({
                 _id: { $in: globalCategories },
@@ -618,56 +658,65 @@ class SellerService {
         if (seller.status !== 'draft') {
             throw new Error(`Нельзя редактировать продавца в статусе '${seller.status}'. Переведите в draft для изменений.`);
         }
-        // ======================================
 
         // ========== ПРОВЕРКА ПРАВ ДОСТУПА ==========
 
         if (userRole === 'owner') {
-            // Owner может редактировать ЛЮБОГО продавца в draft
-            // Проверка не нужна
+            // Owner редактирует любого — без ограничений
         }
         else if (userRole === 'admin') {
-            // Admin может редактировать СВОИХ и ЧУЖИХ
-            // НО НЕ может редактировать если город/категория неактивны
-
-            // Проверка видимости (город активен)
-            if (!seller.city.isActive) {
+            // Проверка текущего города
+            if (!seller.city || !seller.city.isActive) {
                 throw new Error('Доступ запрещён');
             }
-
-            // Проверка видимости (все глобальные категории активны)
+            // Проверка текущих категорий
             const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
             if (hasInactiveCategory) {
                 throw new Error('Доступ запрещён');
             }
         }
         else if (userRole === 'manager') {
-            // Manager может редактировать ТОЛЬКО СВОИХ
-
-            if (seller.createdBy.toString() !== userId) {
+            // Только свои продавцы
+            if (seller.createdBy.toString() !== userId.toString()) {
                 throw new Error('Доступ запрещён');
             }
-
-            // Проверка видимости (город активен)
-            if (!seller.city.isActive) {
+            // Проверка текущего города
+            if (!seller.city || !seller.city.isActive) {
                 throw new Error('Доступ запрещён');
             }
-
-            // Проверка видимости (все глобальные категории активны)
+            // Проверка текущих категорий
             const hasInactiveCategory = seller.globalCategories.some(cat => !cat.isActive);
             if (hasInactiveCategory) {
                 throw new Error('Доступ запрещён');
             }
         }
 
-        // ===========================================
+        // ========== ПРОВЕРКА НОВЫХ ЗНАЧЕНИЙ ==========
+        // Если admin/manager меняет город — новый должен быть активным
+        if (updateData.city && userRole !== 'owner') {
+            const newCity = await City.findById(updateData.city).select('isActive');
+            if (!newCity || !newCity.isActive) {
+                throw new Error('Нельзя установить неактивный город');
+            }
+        }
+
+        // Если admin/manager меняет категории — все новые должны быть активными
+        if (updateData.globalCategories?.length && userRole !== 'owner') {
+            const newCategories = await Category.find({
+                _id: { $in: updateData.globalCategories }
+            }).select('isActive');
+            const hasInactive = newCategories.some(c => !c.isActive);
+            if (hasInactive) {
+                throw new Error('Нельзя установить неактивные категории');
+            }
+        }
+        // =============================================
 
         // Если меняется name → обновляем slug
         if (updateData.name && updateData.name !== seller.name) {
             updateData.slug = await generateUniqueSlug(Seller, updateData.name, sellerId);
         }
 
-        // Обновляем поля
         Object.assign(seller, updateData);
         await seller.save();
 
@@ -1060,7 +1109,7 @@ class SellerService {
         if (seller.logo) {
             const fs = await import('fs/promises');
             const path = await import('path');
-            const oldPath = path.join(process.cwd(), seller.logo);
+            const oldPath = path.join(process.cwd(), 'public', seller.logo);
 
             try {
                 await fs.unlink(oldPath);
@@ -1100,7 +1149,7 @@ class SellerService {
         // Удаляем файл
         const fs = await import('fs/promises');
         const path = await import('path');
-        const logoPath = path.join(process.cwd(), seller.logo);
+        const logoPath = path.join(process.cwd(), 'public', seller.logo);
 
         try {
             await fs.unlink(logoPath);
@@ -1137,7 +1186,8 @@ class SellerService {
         if (seller.coverImage) {
             const fs = await import('fs/promises');
             const path = await import('path');
-            const oldPath = path.join(process.cwd(), seller.coverImage);
+            const oldPath = path.join(process.cwd(), 'public', seller.coverImage);
+
 
             try {
                 await fs.unlink(oldPath);
@@ -1178,7 +1228,7 @@ class SellerService {
         // Удаляем файл
         const fs = await import('fs/promises');
         const path = await import('path');
-        const coverPath = path.join(process.cwd(), seller.coverImage);
+        const coverPath = path.join(process.cwd(), 'public', seller.coverImage);
 
         try {
             await fs.unlink(coverPath);
