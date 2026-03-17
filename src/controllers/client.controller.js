@@ -78,6 +78,58 @@ class ClientController {
             error(res, err.message, 404);
         }
     }
+
+    // ── OWNER ONLY ────────────────────────────────────
+
+    // GET /api/clients — список всех клиентов
+    async getAllClients(req, res) {
+        try {
+            const { page, limit } = getPaginationParams(req.query);
+            const { query = '', isActive = '' } = req.query;
+
+            const result = await clientService.getAllClients(page, limit, { query, isActive });
+            success(res, result.data, 'Клиенты получены', 200, result.pagination);
+        } catch (err) {
+            error(res, err.message, 500);
+        }
+    }
+
+    // GET /api/clients/:id — профиль клиента по ID
+    async getClientById(req, res) {
+        try {
+            const { id } = req.params;
+            const client = await clientService.getClientById(id);
+            success(res, client, 'Клиент получен');
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // GET /api/clients/:id/ratings — оценки клиента (с фильтром по rating)
+    async getClientRatings(req, res) {
+        try {
+            const { id } = req.params;
+            const { page, limit } = getPaginationParams(req.query);
+            const { rating = '' } = req.query;
+
+            const result = await ratingService.getClientRatings(id, page, limit, { rating });
+            success(res, result.data, 'Оценки клиента получены', 200, result.pagination);
+        } catch (err) {
+            error(res, err.message, 404);
+        }
+    }
+
+    // PATCH /api/clients/:id/toggle-active — блокировка/разблокировка
+    async toggleClientActive(req, res) {
+        try {
+            const { id } = req.params;
+            const client = await clientService.toggleClientActive(id);
+            const message = client.isActive ? 'Клиент разблокирован' : 'Клиент заблокирован';
+            success(res, client, message);
+        } catch (err) {
+            error(res, err.message, 400);
+        }
+    }
 }
 
 export default new ClientController();

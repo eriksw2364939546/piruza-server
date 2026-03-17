@@ -145,6 +145,73 @@ class ClientService {
 
         return client.favorites;
     }
+
+    // ── OWNER ONLY ────────────────────────────────────
+
+    // Получить список всех клиентов (с поиском и пагинацией)
+    async getAllClients(page = 1, limit = 20, { query = '', isActive = '' } = {}) {
+        // Получаем все и фильтруем в памяти (из-за шифрования name/email)
+        const all = await Client.find()
+            .populate('city', 'name slug')
+            .sort({ createdAt: -1 });
+
+        const decrypted = all.map(c => {
+            const obj = c.toObject();
+            obj.email = decrypt(obj.email);
+            obj.name = decrypt(obj.name);
+            return obj;
+        });
+
+        // Фильтрация
+        const filtered = decrypted.filter(c => {
+            const matchQuery = !query ||
+                c.name?.toLowerCase().includes(query.toLowerCase()) ||
+                c.email?.toLowerCase().includes(query.toLowerCase());
+            const matchActive =
+                isActive === '' ||
+                (isActive === 'true' && c.isActive === true) ||
+                (isActive === 'false' && c.isActive === false);
+            return matchQuery && matchActive;
+        });
+
+        // Ручная пагинация
+        const total = filtered.length;
+        const skip = (page - 1) * limit;
+        const data = filtered.slice(skip, skip + limit);
+        const pages = Math.ceil(total / limit);
+
+        return { data, pagination: { total, page, limit, pages } };
+    }
+
+    // Получить профиль клиента по ID (для Owner)
+    async getClientById(clientId) {
+        const client = await Client.findById(clientId)
+            .populate('city', 'name slug')
+            .populate('favorites', 'name slug logo averageRating totalRatings city');
+
+        if (!client) throw new Error('Клиент не найден');
+
+        const decrypted = client.toObject();
+        decrypted.email = decrypt(decrypted.email);
+        decrypted.name = decrypt(decrypted.name);
+
+        return decrypted;
+    }
+
+    // Заблокировать / разблокировать клиента
+    async toggleClientActive(clientId) {
+        const client = await Client.findById(clientId);
+        if (!client) throw new Error('Клиент не найден');
+
+        client.isActive = !client.isActive;
+        await client.save();
+
+        const decrypted = client.toObject();
+        decrypted.email = decrypt(decrypted.email);
+        decrypted.name = decrypt(decrypted.name);
+
+        return decrypted;
+    }
 }
 
 export default new ClientService();
