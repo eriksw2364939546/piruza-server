@@ -1,6 +1,7 @@
 import clientService from '../services/client.service.js';
 import ratingService from '../services/rating.service.js';
 import { success, error } from '../utils/responsehandler.util.js';
+import { getPaginationParams } from '../utils/pagination.util.js';
 
 class ClientController {
     // Google OAuth логин
@@ -71,9 +72,9 @@ class ClientController {
     // Получить историю оценок клиента
     async getRatings(req, res) {
         try {
-            const ratings = await ratingService.getClientRatings(req.client.id);
-
-            success(res, ratings, 'История оценок получена');
+            const { page, limit } = getPaginationParams(req.query);
+            const result = await ratingService.getClientRatings(req.client.id, page, limit);
+            success(res, result.data, 'История оценок получена', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 404);
         }
@@ -104,6 +105,7 @@ class ClientController {
             error(res, err.message, 404);
         }
     }
+
 
     // GET /api/clients/:id/ratings — оценки клиента (с фильтром по rating)
     async getClientRatings(req, res) {

@@ -13,7 +13,7 @@ export const setupRoutes = (app) => {
     // Базовый префикс: /api
 
     app.use('/api/auth', authRoute);
-    app.use('/api/client', clientRoute);
+    app.use('/api/clients', clientRoute);
     app.use('/api/cities', cityRoute);
     app.use('/api/categories', categoryRoute);
     app.use('/api/sellers', sellerRoute);

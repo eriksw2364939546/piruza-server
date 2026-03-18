@@ -34,9 +34,15 @@ class SellerService {
     async getAllSellers(filters, userId, userRole, page = 1, limit = 20) {
         const { query, status, city, category } = filters;
 
+        console.log('🔍 getAllSellers filters:', JSON.stringify(filters));
+        console.log('🔍 userId:', userId, 'userRole:', userRole);
+        console.log('🔍 queryObj.createdBy will be:', filters.mine === 'true' ? userId : 'not set');
+
         const queryObj = {};
 
         if (userRole === 'manager') {
+            queryObj.createdBy = userId;
+        } else if (filters.mine === 'true') {
             queryObj.createdBy = userId;
         }
 

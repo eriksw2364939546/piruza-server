@@ -47,11 +47,15 @@ class RatingService {
         return { averageRating: seller.averageRating, totalRatings: seller.totalRatings };
     }
 
-    // Получить историю оценок клиента
-    async getClientRatings(clientId, page = 1, limit = 20) {
-        const query = SellerRating.find({ client: clientId })
-            .populate('seller', 'name slug logo')
+    // НУЖНО — с фильтром по rating
+    async getClientRatings(clientId, page = 1, limit = 20, { rating = '' } = {}) {
+        const filter = { client: clientId };
+        if (rating) filter.rating = Number(rating);
+
+        const query = SellerRating.find(filter)
+            .populate('seller', 'name slug logo averageRating city')
             .sort({ createdAt: -1 });
+
         return await paginate(query, page, limit);
     }
 

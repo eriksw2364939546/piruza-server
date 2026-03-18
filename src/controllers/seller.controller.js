@@ -21,7 +21,8 @@ class SellerController {
                 query: req.query.query,
                 status: req.query.status,
                 city: req.query.city,
-                category: req.query.category
+                category: req.query.category,
+                mine: req.query.mine,
             };
 
             const { page, limit } = getPaginationParams(req.query);
@@ -366,6 +367,7 @@ class SellerController {
             }
 
             const previousStatus = sellerBefore.status;
+            const previousEndDate = sellerBefore.activationEndDate;
             const createdByRole = sellerBefore.createdBy.role;
 
             // ========== РАСШИФРОВКА ==========
@@ -383,8 +385,18 @@ class SellerController {
             const sellerEmail = seller.email || null;
             // ====================================================
 
+            // Проверяем изменились ли даты (платная операция)
+            const datesChanged = !previousEndDate ||
+                seller.activationEndDate?.getTime() !== previousEndDate?.getTime();
+
+            // Письма только если: новые даты установлены ИЛИ был inactive
+            const shouldSendEmails =
+                datesChanged ||
+                previousStatus === 'inactive' ||
+                previousStatus === 'expired';
+
             // ========== EMAIL УВЕДОМЛЕНИЯ ==========
-            if (previousStatus === 'draft' || previousStatus === 'expired') {
+            if (shouldSendEmails) {
 
                 const ownerEmail = process.env.OWNER_EMAIL;
 
@@ -441,7 +453,6 @@ class SellerController {
                             );
                         }
                     } else if (activatorRole === 'admin') {
-                        // Admin активирует продавца Admin'а
                         const decryptedCurrentUserEmail = req.user.email ? decryptField(req.user.email) : null;
 
                         if (createdByEmail === decryptedCurrentUserEmail) {
@@ -490,6 +501,7 @@ class SellerController {
                     }
                 }
 
+                // СЛУЧАЙ 3: createdBy = Manager
                 else if (createdByRole === 'manager') {
                     if (activatorRole === 'owner') {
                         // Owner активирует продавца Manager'а → Manager + Seller
@@ -500,20 +512,13 @@ class SellerController {
                                 seller.activationEndDate
                             );
                         }
-
-                        console.log('🔍 [DEBUG SELLER EMAIL] seller.email:', seller.email);
-                        console.log('🔍 [DEBUG SELLER EMAIL] sellerEmail:', sellerEmail);
-
                         if (sellerEmail) {
-                            console.log('✅ [DEBUG] Отправляем email seller...');
                             await sendActivationEmailToSeller(
                                 sellerEmail,
                                 seller.name,
                                 seller.activationEndDate,
                                 'Owner'
                             );
-                        } else {
-                            console.error('❌ [DEBUG] sellerEmail пустой! НЕ отправляем!');
                         }
                     } else if (activatorRole === 'admin') {
                         // Admin активирует продавца Manager'а → Manager + Seller + Owner
@@ -524,22 +529,14 @@ class SellerController {
                                 seller.activationEndDate
                             );
                         }
-
-                        console.log('🔍 [DEBUG SELLER EMAIL] seller.email:', seller.email);
-                        console.log('🔍 [DEBUG SELLER EMAIL] sellerEmail:', sellerEmail);
-
                         if (sellerEmail) {
-                            console.log('✅ [DEBUG] Отправляем email seller...');
                             await sendActivationEmailToSeller(
                                 sellerEmail,
                                 seller.name,
                                 seller.activationEndDate,
                                 `Admin ${activatorName}`
                             );
-                        } else {
-                            console.error('❌ [DEBUG] sellerEmail пустой! НЕ отправляем!');
                         }
-
                         await sendActivationNotificationToOwner(
                             ownerEmail,
                             seller.name,
