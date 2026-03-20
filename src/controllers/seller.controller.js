@@ -56,14 +56,24 @@ class SellerController {
     }
 
     // Универсальный публичный endpoint с query параметрами
+    // Универсальный публичный endpoint с query параметрами
     async getPublicSellersUniversal(req, res) {
         try {
-            const { city, category } = req.query;
-            const { page, limit } = getPaginationParams(req.query);
+            const { city, category, page, limit, query, sort } = req.query;
+            const { page: p, limit: l } = getPaginationParams(req.query);
 
-            const result = await sellerService.getPublicSellersUniversal(city, category, page, limit);
+            const result = await sellerService.getPublicSellersUniversal(
+                city || null,
+                category || null,
+                p,
+                l,
+                query || '',
+                sort || ''
+            );
 
-            const message = result.pagination.total === 0 ? '0 продавцов' : `${result.pagination.total} продавцов`;
+            const message = result.pagination.total === 0
+                ? '0 продавцов'
+                : `${result.pagination.total} продавцов`;
 
             success(res, result.data, message, 200, result.pagination);
         } catch (err) {

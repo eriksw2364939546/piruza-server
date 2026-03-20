@@ -8,7 +8,14 @@ class ProductService {
     // Публично: только active продавцы
     // Owner/Admin: все продавцы
     // Manager: свои продавцы (любой статус)
-    async getProductsBySeller(sellerId, userId = null, userRole = null, page = 1, limit = 20) {
+    async getProductsBySeller(sellerId, userId = null, userRole = null, page = 1, limit = 20, query = '', categoryId = '') {
+        const buildFilter = (sellerId) => {
+            const filter = { seller: sellerId };
+            if (query) filter.name = { $regex: query, $options: 'i' };
+            if (categoryId) filter.category = categoryId;
+            return filter;
+        };
+
         // Если НЕТ токена (публичный доступ) - проверяем статус продавца
         if (!userId || !userRole) {
             const seller = await Seller.findOne({
@@ -21,11 +28,11 @@ class ProductService {
                 throw new Error('Продавец не найден или неактивен');
             }
 
-            const query = Product.find({ seller: sellerId })
+            const q = Product.find(buildFilter(sellerId))
                 .populate('category', 'name slug')
                 .sort({ createdAt: -1 });
 
-            return await paginate(query, page, limit);
+            return await paginate(q, page, limit);
         }
 
         // Если ЕСТЬ токен - проверяем права
@@ -37,11 +44,11 @@ class ProductService {
 
         // Owner и Admin видят всех
         if (userRole === 'owner' || userRole === 'admin') {
-            const query = Product.find({ seller: sellerId })
+            const q = Product.find(buildFilter(sellerId))
                 .populate('category', 'name slug')
                 .sort({ createdAt: -1 });
 
-            return await paginate(query, page, limit);
+            return await paginate(q, page, limit);
         }
 
         // Manager видит только своих (любой статус)
@@ -50,11 +57,11 @@ class ProductService {
                 throw new Error('Доступ запрещён. Вы можете видеть только товары своих продавцов');
             }
 
-            const query = Product.find({ seller: sellerId })
+            const q = Product.find(buildFilter(sellerId))
                 .populate('category', 'name slug')
                 .sort({ createdAt: -1 });
 
-            return await paginate(query, page, limit);
+            return await paginate(q, page, limit);
         }
 
         throw new Error('Доступ запрещён');

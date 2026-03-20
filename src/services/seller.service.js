@@ -137,11 +137,11 @@ class SellerService {
     }
 
     // Универсальный публичный метод с query параметрами
-    async getPublicSellersUniversal(citySlug = null, categorySlug = null, page = 1, limit = 20) {
+    async getPublicSellersUniversal(citySlug = null, categorySlug = null, page = 1, limit = 20, query = '', sort = '') {
         const now = new Date();
 
         // Базовый фильтр
-        const query = {
+        const filter = {
             status: 'active',
             activationEndDate: { $gt: now }
         };
@@ -154,7 +154,7 @@ class SellerService {
                 throw new Error('Город не найден или неактивен');
             }
 
-            query.city = cityDoc._id;
+            filter.city = cityDoc._id;
         }
 
         // ФИЛЬТР ПО КАТЕГОРИИ (slug)
@@ -169,10 +169,23 @@ class SellerService {
                 throw new Error('Категория не найдена или неактивна');
             }
 
-            query.globalCategories = categoryDoc._id;
+            filter.globalCategories = categoryDoc._id;
         }
 
-        const sellersQuery = Seller.find(query)
+        // ФИЛЬТР ПО НАЗВАНИЮ
+        if (query) {
+            filter.$or = [
+                { name: { $regex: query, $options: 'i' } },
+                { slug: { $regex: query, $options: 'i' } },
+            ];
+        }
+
+        // СОРТИРОВКА
+        const sortObj = sort === 'views'
+            ? { viewsCount: -1 }
+            : { createdAt: -1 };
+
+        const sellersQuery = Seller.find(filter)
             .populate({
                 path: 'city',
                 match: { isActive: true },
@@ -183,10 +196,9 @@ class SellerService {
                 match: { isActive: true },
                 select: 'name slug'
             })
-            .select('name slug logo coverImage averageRating totalRatings city globalCategories')
-            .sort({ createdAt: -1 });
+            .select('name slug logo coverImage averageRating totalRatings viewsCount city globalCategories')
+            .sort(sortObj);
 
-        // Получаем всех для фильтрации
         const allSellers = await sellersQuery;
 
         // Фильтруем где город или категории стали null
@@ -208,7 +220,7 @@ class SellerService {
                 page: parseInt(page),
                 limit: parseInt(limit),
                 total,
-                totalPages,
+                pages: totalPages,
                 hasNext: page < totalPages,
                 hasPrev: page > 1
             }

@@ -8,19 +8,20 @@ class ProductController {
         try {
             const { sellerId } = req.params;
             const { page, limit } = getPaginationParams(req.query);
+            const { query = '', category = '' } = req.query;
 
-            // Передаём userId и userRole если токен есть
             const userId = req.user?.id || null;
             const userRole = req.user?.role || null;
 
-            const result = await productService.getProductsBySeller(sellerId, userId, userRole, page, limit);
+            const result = await productService.getProductsBySeller(
+                sellerId, userId, userRole, page, limit, query, category
+            );
 
             success(res, result.data, 'Товары получены', 200, result.pagination);
         } catch (err) {
             error(res, err.message, 500);
         }
     }
-
     // Получить товар по slug (внутри продавца)
     async getProductBySlug(req, res) {
         try {
